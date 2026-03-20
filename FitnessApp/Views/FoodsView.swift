@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct FoodsView: View {
+    @Binding var showSettings: Bool
     @Environment(\.modelContext) private var context
     @Query(sort: \FoodItem.name) private var foods: [FoodItem]
 
@@ -17,7 +18,6 @@ struct FoodsView: View {
         ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             VStack(spacing: 0) {
-                // Header
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Alimenti")
@@ -33,59 +33,54 @@ struct FoodsView: View {
                         showAdd = true
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 13, weight: .bold))
-                            Text("Nuovo")
-                                .font(.system(size: 13, weight: .bold))
+                            Image(systemName: "plus").font(.system(size: 13, weight: .bold))
+                            Text("Nuovo").font(.system(size: 13, weight: .bold))
                         }
                         .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(Color.acc)
-                        .cornerRadius(12)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Color.acc).cornerRadius(12)
                     }
                     .buttonStyle(.plain)
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 18, weight: .medium)).foregroundColor(.muted)
+                            .frame(width: 34, height: 34).background(Color.card).cornerRadius(11)
+                    }.buttonStyle(.plain)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
 
-                // Search
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundColor(.muted)
                     TextField("Cerca alimento...", text: $search)
-                        .foregroundColor(.txt)
-                        .tint(.acc2)
+                        .foregroundColor(.txt).tint(.acc2)
                 }
-                .padding(12)
-                .background(Color.card)
-                .cornerRadius(14)
+                .padding(12).background(Color.card).cornerRadius(14)
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.brd, lineWidth: 1))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 20).padding(.bottom, 8)
 
-                // Lista
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(filtered) { food in
-                            FoodRow(food: food)
-                                .onTapGesture {
-                                    editFood = food
-                                    showAdd = true
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        context.delete(food)
-                                        try? context.save()
-                                    } label: {
-                                        Label("Elimina", systemImage: "trash")
-                                    }
-                                }
-                        }
+                List {
+                    ForEach(filtered) { food in
+                        FoodRow(food: food)
+                            .onTapGesture { editFood = food; showAdd = true }
+                            .listRowBackground(Color.card)
+                            .listRowSeparatorTint(Color.brd2)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    context.delete(food); try? context.save()
+                                } label: { Label("Elimina", systemImage: "trash") }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    editFood = food; showAdd = true
+                                } label: { Label("Modifica", systemImage: "pencil") }
+                                .tint(.acc)
+                            }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 100)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color.bg)
             }
         )
         .sheet(isPresented: $showAdd) {
@@ -96,7 +91,6 @@ struct FoodsView: View {
 
 struct FoodRow: View {
     let food: FoodItem
-
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
@@ -104,44 +98,59 @@ struct FoodRow: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color(hex: "dddddd"))
                 Text("P \(Int(food.proteinPer100g))g · C \(Int(food.carbsPer100g))g · G \(Int(food.fatPer100g))g · Fi \(Int(food.fiberPer100g))g")
-                    .font(.system(size: 11))
-                    .foregroundColor(.muted)
+                    .font(.system(size: 11)).foregroundColor(.muted)
+                if let pName = food.portionName, let pGrams = food.portionGrams {
+                    Text("\(pName) = \(Int(pGrams))g")
+                        .font(.system(size: 11)).foregroundColor(.acc2)
+                }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(Int(food.kcalPer100g))")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(.txt)
-                Text("kcal/100g")
-                    .font(.system(size: 10))
-                    .foregroundColor(.muted)
+                Text("kcal/100g").font(.system(size: 10)).foregroundColor(.muted)
             }
         }
         .padding(.vertical, 12)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Color.card2).frame(height: 1)
-        }
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.card2).frame(height: 1) }
     }
 }
 
-// MARK: - Food Form Sheet (nuovo / modifica)
+// MARK: - Food Form Sheet
 
 struct FoodFormSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    let food: FoodItem?   // nil = nuovo
+    let food: FoodItem?
 
-    @State private var name = ""
-    @State private var kcal = ""
-    @State private var protein = ""
-    @State private var carbs = ""
-    @State private var fat = ""
-    @State private var fiber = ""
-    @State private var sugar = ""
-    @State private var saturatedFat = ""
+    @State private var name: String
+    @State private var kcal: String
+    @State private var protein: String
+    @State private var carbs: String
+    @State private var fat: String
+    @State private var fiber: String
+    @State private var sugar: String
+    @State private var saturatedFat: String
+    @State private var portionName: String
+    @State private var portionGrams: String
 
-    var isValid: Bool { !name.isEmpty && Double(kcal) != nil }
+    init(food: FoodItem?) {
+        self.food = food
+        _name         = State(initialValue: food?.name ?? "")
+        _kcal         = State(initialValue: food.map { String(Int($0.kcalPer100g)) } ?? "")
+        _protein      = State(initialValue: food.map { String(Int($0.proteinPer100g)) } ?? "")
+        _carbs        = State(initialValue: food.map { String(Int($0.carbsPer100g)) } ?? "")
+        _fat          = State(initialValue: food.map { String(Int($0.fatPer100g)) } ?? "")
+        _fiber        = State(initialValue: food.map { String(Int($0.fiberPer100g)) } ?? "")
+        _sugar        = State(initialValue: food.map { String(Int($0.sugarPer100g)) } ?? "")
+        _saturatedFat = State(initialValue: food.map { String(Int($0.saturatedFatPer100g)) } ?? "")
+        _portionName  = State(initialValue: food?.portionName ?? "")
+        _portionGrams = State(initialValue: food?.portionGrams.map { String(Int($0)) } ?? "")
+    }
+
+    var isValid: Bool { !name.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
 
     var body: some View {
         NavigationStack {
@@ -151,52 +160,55 @@ struct FoodFormSheet: View {
                     VStack(spacing: 14) {
                         HTCard {
                             VStack(spacing: 12) {
-                                SectionLabel(text: "Nome")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                SectionLabel(text: "Nome").frame(maxWidth: .infinity, alignment: .leading)
                                 TextField("Es. Petto di pollo", text: $name)
-                                    .foregroundColor(.txt)
-                                    .tint(.acc2)
-                                    .padding(12)
-                                    .background(Color.brd)
-                                    .cornerRadius(12)
+                                    .foregroundColor(.txt).tint(.acc2)
+                                    .padding(12).background(Color.brd).cornerRadius(12)
                             }
                         }
-
                         HTCard {
                             VStack(spacing: 12) {
-                                SectionLabel(text: "Valori per 100g")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                SectionLabel(text: "Valori per 100g").frame(maxWidth: .infinity, alignment: .leading)
                                 NumericField(label: "Calorie (kcal)", value: $kcal, color: .acc2)
                                 NumericField(label: "Proteine (g)",   value: $protein, color: .acc2)
                                 NumericField(label: "Carboidrati (g)", value: $carbs, color: .gymBlue)
-                                NumericField(label: "Grassi (g)",     value: $fat,   color: .gymOrange)
+                                NumericField(label: "Grassi (g)",     value: $fat, color: .gymOrange)
                             }
                         }
-
                         HTCard {
                             VStack(spacing: 12) {
-                                SectionLabel(text: "Micronutrienti per 100g")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                NumericField(label: "Fibre (g)",       value: $fiber,       color: .gymGreen)
-                                NumericField(label: "Zuccheri (g)",    value: $sugar,       color: .gymPink)
-                                NumericField(label: "Gr. saturi (g)",  value: $saturatedFat, color: .gymOrange)
+                                SectionLabel(text: "Micronutrienti per 100g").frame(maxWidth: .infinity, alignment: .leading)
+                                NumericField(label: "Fibre (g)",      value: $fiber, color: .gymGreen)
+                                NumericField(label: "Zuccheri (g)",   value: $sugar, color: .gymPink)
+                                NumericField(label: "Gr. saturi (g)", value: $saturatedFat, color: .gymOrange)
                             }
                         }
-
-                        Button {
-                            save()
-                        } label: {
-                            Text(food == nil ? "Aggiungi alimento" : "Salva modifiche")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(isValid ? Color.acc : Color.brd)
-                                .cornerRadius(16)
+                        HTCard {
+                            VStack(spacing: 12) {
+                                SectionLabel(text: "Porzione (opzionale)").frame(maxWidth: .infinity, alignment: .leading)
+                                HStack {
+                                    Text("Nome porzione")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(Color(hex: "cccccc"))
+                                    Spacer()
+                                    TextField("es. 1 fetta", text: $portionName)
+                                        .foregroundColor(.acc2).tint(.acc2)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .multilineTextAlignment(.trailing)
+                                        .frame(width: 120)
+                                        .padding(.vertical, 8).padding(.horizontal, 12)
+                                        .background(Color.brd).cornerRadius(10)
+                                }
+                                NumericField(label: "Grammi porzione", value: $portionGrams, color: .acc2)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!isValid)
-                        .padding(.bottom, 40)
+                        Button { save() } label: {
+                            Text(food == nil ? "Aggiungi alimento" : "Salva modifiche")
+                                .font(.system(size: 16, weight: .bold)).foregroundColor(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 16)
+                                .background(isValid ? Color.acc : Color.brd).cornerRadius(16)
+                        }
+                        .buttonStyle(.plain).disabled(!isValid).padding(.bottom, 40)
                     }
                     .padding(20)
                 }
@@ -207,44 +219,47 @@ struct FoodFormSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Annulla") { dismiss() }.foregroundColor(.muted)
                 }
+                if food != nil {
+                    ToolbarItem(placement: .destructiveAction) {
+                        Button("Elimina") {
+                            if let f = food { context.delete(f); try? context.save() }
+                            dismiss()
+                        }
+                        .foregroundColor(.gymOrange)
+                    }
+                }
             }
         }
         .presentationBackground(Color.bg)
-        .onAppear { prefill() }
     }
 
-    private func prefill() {
-        guard let f = food else { return }
-        name = f.name
-        kcal = String(Int(f.kcalPer100g))
-        protein = String(Int(f.proteinPer100g))
-        carbs = String(Int(f.carbsPer100g))
-        fat = String(Int(f.fatPer100g))
-        fiber = String(Int(f.fiberPer100g))
-        sugar = String(Int(f.sugarPer100g))
-        saturatedFat = String(Int(f.saturatedFatPer100g))
+    private func parse(_ s: String) -> Double {
+        Double(s.replacingOccurrences(of: ",", with: ".")) ?? 0
     }
 
     private func save() {
-        let k = Double(kcal) ?? 0
-        let p = Double(protein) ?? 0
-        let c = Double(carbs) ?? 0
-        let f = Double(fat) ?? 0
-        let fi = Double(fiber) ?? 0
-        let s = Double(sugar) ?? 0
-        let sf = Double(saturatedFat) ?? 0
+        let k  = parse(kcal)
+        let p  = parse(protein)
+        let c  = parse(carbs)
+        let f  = parse(fat)
+        let fi = parse(fiber)
+        let s  = parse(sugar)
+        let sf = parse(saturatedFat)
+        let pName  = portionName.isEmpty ? nil : portionName
+        let pGrams = Double(portionGrams.replacingOccurrences(of: ",", with: "."))
 
         if let existing = food {
             existing.name = name
-            existing.kcalPer100g = k
-            existing.proteinPer100g = p
-            existing.carbsPer100g = c
-            existing.fatPer100g = f
-            existing.fiberPer100g = fi
-            existing.sugarPer100g = s
+            existing.kcalPer100g = k; existing.proteinPer100g = p
+            existing.carbsPer100g = c; existing.fatPer100g = f
+            existing.fiberPer100g = fi; existing.sugarPer100g = s
             existing.saturatedFatPer100g = sf
+            existing.portionName = pName; existing.portionGrams = pGrams
         } else {
-            let newFood = FoodItem(name: name, kcalPer100g: k, proteinPer100g: p, carbsPer100g: c, fatPer100g: f, fiberPer100g: fi, sugarPer100g: s, saturatedFatPer100g: sf)
+            let newFood = FoodItem(name: name, kcalPer100g: k, proteinPer100g: p,
+                carbsPer100g: c, fatPer100g: f, fiberPer100g: fi,
+                sugarPer100g: s, saturatedFatPer100g: sf,
+                portionName: pName, portionGrams: pGrams)
             context.insert(newFood)
         }
         try? context.save()
@@ -256,24 +271,16 @@ struct NumericField: View {
     let label: String
     @Binding var value: String
     let color: Color
-
     var body: some View {
         HStack {
-            Text(label)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Color(hex: "cccccc"))
+            Text(label).font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "cccccc"))
             Spacer()
-            TextField("0", text: $value)
-                .keyboardType(.decimalPad)
-                .foregroundColor(color)
-                .tint(color)
+            TextField("0", text: $value).keyboardType(.decimalPad)
+                .foregroundColor(color).tint(color)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .multilineTextAlignment(.trailing)
-                .frame(width: 70)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(Color.brd)
-                .cornerRadius(10)
+                .multilineTextAlignment(.trailing).frame(width: 70)
+                .padding(.vertical, 8).padding(.horizontal, 12)
+                .background(Color.brd).cornerRadius(10)
         }
     }
 }
