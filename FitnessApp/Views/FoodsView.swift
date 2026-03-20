@@ -144,19 +144,24 @@ struct FoodFormSheet: View {
         _name         = State(initialValue: food?.name ?? "")
         // In modifica mostriamo i valori per 100g (base sempre 100 in edit)
         _baseGrams    = State(initialValue: "100")
-        _kcal         = State(initialValue: food.map { String(Int($0.kcalPer100g)) } ?? "")
-        _protein      = State(initialValue: food.map { String(Int($0.proteinPer100g)) } ?? "")
-        _carbs        = State(initialValue: food.map { String(Int($0.carbsPer100g)) } ?? "")
-        _fat          = State(initialValue: food.map { String(Int($0.fatPer100g)) } ?? "")
-        _fiber        = State(initialValue: food.map { String(Int($0.fiberPer100g)) } ?? "")
-        _sugar        = State(initialValue: food.map { String(Int($0.sugarPer100g)) } ?? "")
-        _saturatedFat = State(initialValue: food.map { String(Int($0.saturatedFatPer100g)) } ?? "")
-        _salt         = State(initialValue: food.map { String(format: "%.1f", $0.saltPer100g) } ?? "")
+        _kcal         = State(initialValue: food.map { Self.fmt($0.kcalPer100g) } ?? "")
+        _protein      = State(initialValue: food.map { Self.fmt($0.proteinPer100g) } ?? "")
+        _carbs        = State(initialValue: food.map { Self.fmt($0.carbsPer100g) } ?? "")
+        _fat          = State(initialValue: food.map { Self.fmt($0.fatPer100g) } ?? "")
+        _fiber        = State(initialValue: food.map { Self.fmt($0.fiberPer100g) } ?? "")
+        _sugar        = State(initialValue: food.map { Self.fmt($0.sugarPer100g) } ?? "")
+        _saturatedFat = State(initialValue: food.map { Self.fmt($0.saturatedFatPer100g) } ?? "")
+        _salt         = State(initialValue: food.map { Self.fmt($0.saltPer100g) } ?? "")
         _portionName  = State(initialValue: food?.portionName ?? "")
         _portionGrams = State(initialValue: food?.portionGrams.map { String(Int($0)) } ?? "")
     }
 
     var isValid: Bool { !name.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
+
+    // Formatta un Double: mostra decimali solo se necessari (1.5 → "1.5", 100.0 → "100")
+    static func fmt(_ v: Double) -> String {
+        v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.2g", v)
+    }
 
     var body: some View {
         NavigationStack {
