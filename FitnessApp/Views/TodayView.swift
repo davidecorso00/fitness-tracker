@@ -121,6 +121,7 @@ struct TodayView: View {
                                     MacroBar(label: "Fibre",      value: totals.fiber,        target: lim.fiberTarget,        color: .gymGreen,  small: true)
                                     MacroBar(label: "Zuccheri",   value: totals.sugar,        target: lim.sugarTarget,        color: .gymPink,   small: true)
                                     MacroBar(label: "Gr. saturi", value: totals.saturatedFat, target: lim.saturatedFatTarget, color: .gymOrange, small: true)
+                                    MacroBar(label: "Sale",       value: totals.salt,          target: lim.saltTarget,          color: .muted,     small: true)
                                 }
                             }
                         }

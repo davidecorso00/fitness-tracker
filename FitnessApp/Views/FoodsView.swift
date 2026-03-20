@@ -97,7 +97,8 @@ struct FoodRow: View {
                 Text(food.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color(hex: "dddddd"))
-                Text("P \(Int(food.proteinPer100g))g · C \(Int(food.carbsPer100g))g · G \(Int(food.fatPer100g))g · Fi \(Int(food.fiberPer100g))g")
+                let saltStr = food.saltPer100g > 0 ? " · Sa \(String(format: "%.1f", food.saltPer100g))g" : ""
+                Text("P \(Int(food.proteinPer100g))g · C \(Int(food.carbsPer100g))g · G \(Int(food.fatPer100g))g · Fi \(Int(food.fiberPer100g))g\(saltStr)")
                     .font(.system(size: 11)).foregroundColor(.muted)
                 if let pName = food.portionName, let pGrams = food.portionGrams {
                     Text("\(pName) = \(Int(pGrams))g")
@@ -126,6 +127,7 @@ struct FoodFormSheet: View {
     let food: FoodItem?
 
     @State private var name: String
+    @State private var baseGrams: String   // quantità base per i valori (default 100g)
     @State private var kcal: String
     @State private var protein: String
     @State private var carbs: String
@@ -133,12 +135,15 @@ struct FoodFormSheet: View {
     @State private var fiber: String
     @State private var sugar: String
     @State private var saturatedFat: String
+    @State private var salt: String
     @State private var portionName: String
     @State private var portionGrams: String
 
     init(food: FoodItem?) {
         self.food = food
         _name         = State(initialValue: food?.name ?? "")
+        // In modifica mostriamo i valori per 100g (base sempre 100 in edit)
+        _baseGrams    = State(initialValue: "100")
         _kcal         = State(initialValue: food.map { String(Int($0.kcalPer100g)) } ?? "")
         _protein      = State(initialValue: food.map { String(Int($0.proteinPer100g)) } ?? "")
         _carbs        = State(initialValue: food.map { String(Int($0.carbsPer100g)) } ?? "")
@@ -146,6 +151,7 @@ struct FoodFormSheet: View {
         _fiber        = State(initialValue: food.map { String(Int($0.fiberPer100g)) } ?? "")
         _sugar        = State(initialValue: food.map { String(Int($0.sugarPer100g)) } ?? "")
         _saturatedFat = State(initialValue: food.map { String(Int($0.saturatedFatPer100g)) } ?? "")
+        _salt         = State(initialValue: food.map { String(format: "%.1f", $0.saltPer100g) } ?? "")
         _portionName  = State(initialValue: food?.portionName ?? "")
         _portionGrams = State(initialValue: food?.portionGrams.map { String(Int($0)) } ?? "")
     }
@@ -168,7 +174,31 @@ struct FoodFormSheet: View {
                         }
                         HTCard {
                             VStack(spacing: 12) {
-                                SectionLabel(text: "Valori per 100g").frame(maxWidth: .infinity, alignment: .leading)
+                                // Header con quantità base modificabile
+                                HStack(spacing: 8) {
+                                    Text("Valori per")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.muted)
+                                        .kerning(0.7)
+                                        .textCase(.uppercase)
+                                    TextField("100", text: $baseGrams)
+                                        .keyboardType(.numberPad)
+                                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                                        .foregroundColor(.acc2).tint(.acc2)
+                                        .multilineTextAlignment(.center)
+                                        .frame(width: 64)
+                                        .padding(.vertical, 5).padding(.horizontal, 8)
+                                        .background(Color.brd).cornerRadius(8)
+                                    Text("g")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.muted)
+                                    Spacer()
+                                    if (Double(baseGrams) ?? 100) != 100 {
+                                        Text("verranno convertiti a /100g")
+                                            .font(.system(size: 10)).foregroundColor(.gymOrange)
+                                    }
+                                }
+                                .padding(.bottom, 4)
                                 NumericField(label: "Calorie (kcal)", value: $kcal, color: .acc2)
                                 NumericField(label: "Proteine (g)",   value: $protein, color: .acc2)
                                 NumericField(label: "Carboidrati (g)", value: $carbs, color: .gymBlue)
@@ -181,6 +211,7 @@ struct FoodFormSheet: View {
                                 NumericField(label: "Fibre (g)",      value: $fiber, color: .gymGreen)
                                 NumericField(label: "Zuccheri (g)",   value: $sugar, color: .gymPink)
                                 NumericField(label: "Gr. saturi (g)", value: $saturatedFat, color: .gymOrange)
+                                NumericField(label: "Sale (g)",       value: $salt,        color: .muted)
                             }
                         }
                         HTCard {
@@ -238,13 +269,19 @@ struct FoodFormSheet: View {
     }
 
     private func save() {
-        let k  = parse(kcal)
-        let p  = parse(protein)
-        let c  = parse(carbs)
-        let f  = parse(fat)
-        let fi = parse(fiber)
-        let s  = parse(sugar)
-        let sf = parse(saturatedFat)
+        // Fattore di conversione: i valori inseriti sono per baseGrams,
+        // dobbiamo salvarli per 100g
+        let base   = parse(baseGrams).isZero ? 100 : parse(baseGrams)
+        let factor = 100.0 / base
+
+        let k  = parse(kcal)  * factor
+        let p  = parse(protein) * factor
+        let c  = parse(carbs) * factor
+        let f  = parse(fat)   * factor
+        let fi = parse(fiber) * factor
+        let s  = parse(sugar) * factor
+        let sf = parse(saturatedFat) * factor
+        let sa = parse(salt) * factor
         let pName  = portionName.isEmpty ? nil : portionName
         let pGrams = Double(portionGrams.replacingOccurrences(of: ",", with: "."))
 
@@ -254,11 +291,12 @@ struct FoodFormSheet: View {
             existing.carbsPer100g = c; existing.fatPer100g = f
             existing.fiberPer100g = fi; existing.sugarPer100g = s
             existing.saturatedFatPer100g = sf
+            existing.saltPer100g = sa
             existing.portionName = pName; existing.portionGrams = pGrams
         } else {
             let newFood = FoodItem(name: name, kcalPer100g: k, proteinPer100g: p,
                 carbsPer100g: c, fatPer100g: f, fiberPer100g: fi,
-                sugarPer100g: s, saturatedFatPer100g: sf,
+                sugarPer100g: s, saturatedFatPer100g: sf, saltPer100g: sa,
                 portionName: pName, portionGrams: pGrams)
             context.insert(newFood)
         }

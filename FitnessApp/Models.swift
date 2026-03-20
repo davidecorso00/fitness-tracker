@@ -3,26 +3,28 @@ import Foundation
 
 // MARK: - Food Item
 
-@Model
-final class FoodItem {
-    var name: String
-    var kcalPer100g: Double
-    var proteinPer100g: Double
-    var carbsPer100g: Double
-    var fatPer100g: Double
-    var fiberPer100g: Double
-    var sugarPer100g: Double
-    var saturatedFatPer100g: Double
-    var portionName: String?
-    var portionGrams: Double?
+@Model final class FoodItem {
+    var name: String = ""
+    var kcalPer100g: Double = 0
+    var proteinPer100g: Double = 0
+    var carbsPer100g: Double = 0
+    var fatPer100g: Double = 0
+    var fiberPer100g: Double = 0
+    var sugarPer100g: Double = 0
+    var saturatedFatPer100g: Double = 0
+    var saltPer100g: Double = 0
+    var portionName: String? = nil
+    var portionGrams: Double? = nil
 
     init(name: String, kcalPer100g: Double, proteinPer100g: Double, carbsPer100g: Double,
          fatPer100g: Double, fiberPer100g: Double = 0, sugarPer100g: Double = 0,
-         saturatedFatPer100g: Double = 0, portionName: String? = nil, portionGrams: Double? = nil) {
+         saturatedFatPer100g: Double = 0, saltPer100g: Double = 0,
+         portionName: String? = nil, portionGrams: Double? = nil) {
         self.name = name; self.kcalPer100g = kcalPer100g
         self.proteinPer100g = proteinPer100g; self.carbsPer100g = carbsPer100g
         self.fatPer100g = fatPer100g; self.fiberPer100g = fiberPer100g
         self.sugarPer100g = sugarPer100g; self.saturatedFatPer100g = saturatedFatPer100g
+        self.saltPer100g = saltPer100g
         self.portionName = portionName; self.portionGrams = portionGrams
     }
 
@@ -33,32 +35,37 @@ final class FoodItem {
     func fiber(for g: Double) -> Double { fiberPer100g * g / 100 }
     func sugar(for g: Double) -> Double { sugarPer100g * g / 100 }
     func saturatedFat(for g: Double) -> Double { saturatedFatPer100g * g / 100 }
+    func salt(for g: Double) -> Double { saltPer100g * g / 100 }
 }
 
 // MARK: - Food Entry
 
-@Model
-final class FoodEntry {
-    var date: Date
-    var dayKey: String
-    var meal: MealType
-    var grams: Double
-    var foodName: String
-    var kcalSnapshot: Double
-    var proteinSnapshot: Double
-    var carbsSnapshot: Double
-    var fatSnapshot: Double
-    var fiberSnapshot: Double
-    var sugarSnapshot: Double
-    var saturatedFatSnapshot: Double
+@Model final class FoodEntry {
+    var date: Date = Date()
+    var dayKey: String = ""
+    var meal: MealType = MealType.breakfast
+    var grams: Double = 0
+    var foodName: String = ""
+    var kcalSnapshot: Double = 0
+    var proteinSnapshot: Double = 0
+    var carbsSnapshot: Double = 0
+    var fatSnapshot: Double = 0
+    var fiberSnapshot: Double = 0
+    var sugarSnapshot: Double = 0
+    var saturatedFatSnapshot: Double = 0
+    var saltSnapshot: Double = 0
 
     init(food: FoodItem, grams: Double, meal: MealType, date: Date) {
         self.date = date; self.dayKey = date.dateKey; self.meal = meal; self.grams = grams
         self.foodName = food.name
-        self.kcalSnapshot = food.kcal(for: grams); self.proteinSnapshot = food.protein(for: grams)
-        self.carbsSnapshot = food.carbs(for: grams); self.fatSnapshot = food.fat(for: grams)
-        self.fiberSnapshot = food.fiber(for: grams); self.sugarSnapshot = food.sugar(for: grams)
+        self.kcalSnapshot = food.kcal(for: grams)
+        self.proteinSnapshot = food.protein(for: grams)
+        self.carbsSnapshot = food.carbs(for: grams)
+        self.fatSnapshot = food.fat(for: grams)
+        self.fiberSnapshot = food.fiber(for: grams)
+        self.sugarSnapshot = food.sugar(for: grams)
         self.saturatedFatSnapshot = food.saturatedFat(for: grams)
+        self.saltSnapshot = food.salt(for: grams)
     }
 }
 
@@ -69,15 +76,14 @@ enum MealType: String, Codable, CaseIterable {
 
 // MARK: - Day Log
 
-@Model
-final class DayLog {
-    @Attribute(.unique) var dateKey: String
-    var weight: Double?
-    var steps: Int
-    var gymColor: GymColor
+@Model final class DayLog {
+    @Attribute(.unique) var dateKey: String = ""
+    var weight: Double? = nil
+    var steps: Int = 0
+    var gymColor: GymColor = GymColor.rest
 
     init(dateKey: String) {
-        self.dateKey = dateKey; self.weight = nil; self.steps = 0; self.gymColor = .rest
+        self.dateKey = dateKey
     }
 
     var burnedKcal: Int {
@@ -92,39 +98,47 @@ enum GymColor: String, Codable, CaseIterable {
 
 // MARK: - App Limits
 
-@Model
-final class AppLimits {
-    var kcalTarget: Double
-    var proteinTarget: Double
-    var carbsTarget: Double
-    var fatTarget: Double
-    var fiberTarget: Double
-    var sugarTarget: Double
-    var saturatedFatTarget: Double
-    var stepsTarget: Int
-    var weightTarget: Double
-    var startDate: Date      // data inizio tracciamento risultati
+@Model final class AppLimits {
+    var kcalTarget: Double = 2255
+    var proteinTarget: Double = 200
+    var carbsTarget: Double = 300
+    var fatTarget: Double = 70
+    var fiberTarget: Double = 30
+    var sugarTarget: Double = 50
+    var saturatedFatTarget: Double = 20
+    var saltTarget: Double = 6
+    var stepsTarget: Int = 10000
+    var weightTarget: Double = 85
+    var startDate: Date = Date()
 
-    init() {
-        self.kcalTarget = 2255; self.proteinTarget = 200; self.carbsTarget = 300
-        self.fatTarget = 70; self.fiberTarget = 30; self.sugarTarget = 50
-        self.saturatedFatTarget = 20; self.stepsTarget = 10000; self.weightTarget = 85
-        self.startDate = Calendar.current.startOfDay(for: Date())
-    }
+    init() {}
 }
 
 // MARK: - Date Helpers
 
 extension Date {
-    var dateKey: String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: self)
-    }
+    private static let keyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+    private static let displayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "it_IT")
+        f.dateFormat = "EEEE d MMM"
+        return f
+    }()
+
+    var dateKey: String { Date.keyFormatter.string(from: self) }
+
     func adding(days: Int) -> Date {
         Calendar.current.date(byAdding: .day, value: days, to: self) ?? self
     }
     var isToday: Bool { Calendar.current.isDateInToday(self) }
     var isYesterday: Bool { Calendar.current.isDateInYesterday(self) }
     var isFuture: Bool { self > Calendar.current.startOfDay(for: Date()).adding(days: 1) }
+
     var displayLabel: String {
         if isToday { return "Oggi" }
         if isYesterday { return "Ieri" }
@@ -135,7 +149,6 @@ extension Date {
         return ""
     }
     var fullDisplay: String {
-        let f = DateFormatter(); f.locale = Locale(identifier: "it_IT")
-        f.dateFormat = "EEEE d MMM"; return f.string(from: self).capitalized
+        Date.displayFormatter.string(from: self).capitalized
     }
 }

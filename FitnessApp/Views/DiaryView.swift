@@ -234,13 +234,14 @@ struct EditEntrySheet: View {
         guard let g = Double(gramsInput), g > 0 else { return }
         let ratio = g / max(entry.grams, 1)
         entry.grams = g
-        entry.kcalSnapshot     *= ratio
-        entry.proteinSnapshot  *= ratio
-        entry.carbsSnapshot    *= ratio
-        entry.fatSnapshot      *= ratio
-        entry.fiberSnapshot    *= ratio
-        entry.sugarSnapshot    *= ratio
+        entry.kcalSnapshot         *= ratio
+        entry.proteinSnapshot      *= ratio
+        entry.carbsSnapshot        *= ratio
+        entry.fatSnapshot          *= ratio
+        entry.fiberSnapshot        *= ratio
+        entry.sugarSnapshot        *= ratio
         entry.saturatedFatSnapshot *= ratio
+        entry.saltSnapshot         *= ratio
         try? context.save()
         dismiss()
     }
@@ -484,6 +485,7 @@ struct QuickAddSheet: View {
     @State private var fiber = ""
     @State private var sugar = ""
     @State private var saturatedFat = ""
+    @State private var salt = ""
     @State private var grams = "100"
 
     var isValid: Bool { !name.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
@@ -532,9 +534,10 @@ struct QuickAddSheet: View {
                         HTCard {
                             VStack(spacing: 12) {
                                 SectionLabel(text: "Micronutrienti (opzionale)").frame(maxWidth: .infinity, alignment: .leading)
-                                NumericField(label: "Fibre (g)",      value: $fiber,       color: .gymGreen)
-                                NumericField(label: "Zuccheri (g)",   value: $sugar,       color: .gymPink)
+                                NumericField(label: "Fibre (g)",      value: $fiber,        color: .gymGreen)
+                                NumericField(label: "Zuccheri (g)",   value: $sugar,        color: .gymPink)
                                 NumericField(label: "Gr. saturi (g)", value: $saturatedFat, color: .gymOrange)
+                                NumericField(label: "Sale (g)",       value: $salt,         color: .muted)
                             }
                         }
 
@@ -569,6 +572,7 @@ struct QuickAddSheet: View {
         let fi  = parse(fiber)
         let s   = parse(sugar)
         let sf  = parse(saturatedFat)
+        let sa  = parse(salt)
 
         // Crea un FoodItem temporaneo (non inserito nel context)
         // I valori sono già totali per la quantità indicata,
@@ -582,7 +586,8 @@ struct QuickAddSheet: View {
             fatPer100g: f * factor,
             fiberPer100g: fi * factor,
             sugarPer100g: s * factor,
-            saturatedFatPer100g: sf * factor
+            saturatedFatPer100g: sf * factor,
+            saltPer100g: sa * factor
         )
 
         let entry = FoodEntry(food: tempFood, grams: g, meal: meal, date: date)

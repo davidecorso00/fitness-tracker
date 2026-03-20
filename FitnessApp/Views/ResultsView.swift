@@ -176,12 +176,16 @@ struct ResultsView: View {
         .onAppear { limits = appState.limits(context: context) }
     }
 
-    private var startSubtitle: String {
-        guard let lim = limits else { return "" }
+    private static let startDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "it_IT")
         f.dateFormat = "d MMM yyyy"
-        return "Dal \(f.string(from: lim.startDate))"
+        return f
+    }()
+
+    private var startSubtitle: String {
+        guard let lim = limits else { return "" }
+        return "Dal \(ResultsView.startDateFormatter.string(from: lim.startDate))"
     }
 }
 
