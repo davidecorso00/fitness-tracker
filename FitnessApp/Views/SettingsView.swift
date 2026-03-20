@@ -37,8 +37,11 @@ struct SettingsView: View {
                                 LimitRow(label: "Grassi saturi", value: lim.saturatedFatTarget, unit: "g") {
                                     editing = LimitField(label: "Grassi saturi", unit: "g", current: lim.saturatedFatTarget) { lim.saturatedFatTarget = $0; save() }
                                 }
-                                LimitRow(label: "Fibre", value: lim.fiberTarget, unit: "g", last: true) {
+                                LimitRow(label: "Fibre", value: lim.fiberTarget, unit: "g") {
                                     editing = LimitField(label: "Fibre", unit: "g", current: lim.fiberTarget) { lim.fiberTarget = $0; save() }
+                                }
+                            LimitRow(label: "Sale", value: lim.saltTarget, unit: "g", last: true) {
+                                    editing = LimitField(label: "Sale", unit: "g", current: lim.saltTarget) { lim.saltTarget = $0; save() }
                                 }
                             }
                             LimitGroup(title: "Attività & Obiettivi") {
@@ -49,6 +52,11 @@ struct SettingsView: View {
                                     editing = LimitField(label: "Target peso", unit: "kg", current: lim.weightTarget) { lim.weightTarget = $0; save() }
                                 }
                             }
+
+                            // Backup
+                            BackupView()
+                                .padding(.horizontal, -20)
+                                .padding(.top, 8)
 
                             // Data inizio tracciamento
                             VStack(spacing: 0) {

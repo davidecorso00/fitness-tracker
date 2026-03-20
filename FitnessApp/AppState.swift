@@ -65,6 +65,7 @@ final class AppState: ObservableObject {
         var fiber: Double = 0
         var sugar: Double = 0
         var saturatedFat: Double = 0
+        var salt: Double = 0
     }
 
     func totals(for dateKey: String, context: ModelContext) -> DayTotals {
@@ -80,6 +81,7 @@ final class AppState: ObservableObject {
             t.fiber        += e.fiberSnapshot
             t.sugar        += e.sugarSnapshot
             t.saturatedFat += e.saturatedFatSnapshot
+            t.salt         += e.saltSnapshot
         }
     }
 }

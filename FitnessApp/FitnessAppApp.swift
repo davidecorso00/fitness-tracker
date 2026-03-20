@@ -8,13 +8,9 @@ struct FitnessAppApp: App {
         let schema = Schema([FoodItem.self, FoodEntry.self, DayLog.self, AppLimits.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            return try ModelContainer(
-                for: schema,
-                migrationPlan: AppMigrationPlan.self,
-                configurations: config
-            )
+            return try ModelContainer(for: schema, configurations: config)
         } catch {
-            fatalError("Impossibile creare ModelContainer: \(error)")
+            fatalError("ModelContainer error: \(error)")
         }
     }()
 

@@ -208,7 +208,7 @@ struct ChartsView: View {
                     ChartCard(title: "Calorie") {
                         Chart(kcalData, id: \.date) { item in
                             BarMark(x: .value("Data", item.date, unit: .day), y: .value("kcal", item.kcal))
-                                .foregroundStyle(item.kcal > 2255 ? Color.gymOrange : Color.acc2)
+                                .foregroundStyle(item.kcal > kcalTarget ? Color.gymOrange : Color.acc2)
                                 .cornerRadius(6)
                         }
                         .chartXAxis {
@@ -327,11 +327,15 @@ struct ChartsView: View {
         )
     }
 
-    private func shortDayLabel(_ date: Date) -> String {
+    private static let shortDayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "it_IT")
         f.dateFormat = "EEE"
-        return String(f.string(from: date).prefix(3)).capitalized
+        return f
+    }()
+
+    private func shortDayLabel(_ date: Date) -> String {
+        String(ChartsView.shortDayFormatter.string(from: date).prefix(3)).capitalized
     }
 }
 
