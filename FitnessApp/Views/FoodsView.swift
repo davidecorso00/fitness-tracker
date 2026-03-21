@@ -97,17 +97,17 @@ struct FoodRow: View {
                 Text(food.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color(hex: "dddddd"))
-                let saltStr = food.saltPer100g > 0 ? " · Sa \(String(format: "%.1f", food.saltPer100g))g" : ""
-                Text("P \(Int(food.proteinPer100g))g · C \(Int(food.carbsPer100g))g · G \(Int(food.fatPer100g))g · Fi \(Int(food.fiberPer100g))g\(saltStr)")
+                let saltStr = food.saltPer100g > 0 ? " · Sa \(food.saltPer100g.smartFormat)g" : ""
+                Text("P \(food.proteinPer100g.smartFormat)g · C \(food.carbsPer100g.smartFormat)g · G \(food.fatPer100g.smartFormat)g · Fi \(food.fiberPer100g.smartFormat)g\(saltStr)")
                     .font(.system(size: 11)).foregroundColor(.muted)
                 if let pName = food.portionName, let pGrams = food.portionGrams {
-                    Text("\(pName) = \(Int(pGrams))g")
+                    Text("\(pName) = \(pGrams.smartFormat)g")
                         .font(.system(size: 11)).foregroundColor(.acc2)
                 }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text("\(Int(food.kcalPer100g))")
+                Text("\(food.kcalPer100g.smartFormat)")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(.txt)
                 Text("kcal/100g").font(.system(size: 10)).foregroundColor(.muted)
@@ -144,24 +144,19 @@ struct FoodFormSheet: View {
         _name         = State(initialValue: food?.name ?? "")
         // In modifica mostriamo i valori per 100g (base sempre 100 in edit)
         _baseGrams    = State(initialValue: "100")
-        _kcal         = State(initialValue: food.map { Self.fmt($0.kcalPer100g) } ?? "")
-        _protein      = State(initialValue: food.map { Self.fmt($0.proteinPer100g) } ?? "")
-        _carbs        = State(initialValue: food.map { Self.fmt($0.carbsPer100g) } ?? "")
-        _fat          = State(initialValue: food.map { Self.fmt($0.fatPer100g) } ?? "")
-        _fiber        = State(initialValue: food.map { Self.fmt($0.fiberPer100g) } ?? "")
-        _sugar        = State(initialValue: food.map { Self.fmt($0.sugarPer100g) } ?? "")
-        _saturatedFat = State(initialValue: food.map { Self.fmt($0.saturatedFatPer100g) } ?? "")
-        _salt         = State(initialValue: food.map { Self.fmt($0.saltPer100g) } ?? "")
+        _kcal         = State(initialValue: food.map { $0.kcalPer100g.smartFormat } ?? "")
+        _protein      = State(initialValue: food.map { $0.proteinPer100g.smartFormat } ?? "")
+        _carbs        = State(initialValue: food.map { $0.carbsPer100g.smartFormat } ?? "")
+        _fat          = State(initialValue: food.map { $0.fatPer100g.smartFormat } ?? "")
+        _fiber        = State(initialValue: food.map { $0.fiberPer100g.smartFormat } ?? "")
+        _sugar        = State(initialValue: food.map { $0.sugarPer100g.smartFormat } ?? "")
+        _saturatedFat = State(initialValue: food.map { $0.saturatedFatPer100g.smartFormat } ?? "")
+        _salt         = State(initialValue: food.map { $0.saltPer100g.smartFormat } ?? "")
         _portionName  = State(initialValue: food?.portionName ?? "")
-        _portionGrams = State(initialValue: food?.portionGrams.map { String(Int($0)) } ?? "")
+        _portionGrams = State(initialValue: food?.portionGrams.map { $0.smartFormat } ?? "")
     }
 
     var isValid: Bool { !name.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
-
-    // Formatta un Double: mostra decimali solo se necessari (1.5 → "1.5", 100.0 → "100")
-    static func fmt(_ v: Double) -> String {
-        v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.2g", v)
-    }
 
     var body: some View {
         NavigationStack {

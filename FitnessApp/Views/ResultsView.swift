@@ -8,6 +8,7 @@ struct ResultsView: View {
 
     @Query private var allLogs: [DayLog]
     @Query private var allEntries: [FoodEntry]
+    @Query private var allSports: [SportEntry]
 
     @State private var limits: AppLimits?
 
@@ -46,6 +47,7 @@ struct ResultsView: View {
             let log = self.log(for: date)
             let eaten = kcal(for: date)
             let burned = Double(log?.burnedKcal ?? 0)
+                + allSports.filter { $0.dayKey == date.dateKey }.reduce(0.0) { $0 + $1.kcalBurned }
             let steps = log?.steps ?? 0
             let gym = log?.gymColor ?? .rest
 

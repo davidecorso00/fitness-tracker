@@ -91,11 +91,11 @@ struct MealSection: View {
                         Text(entry.foodName)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(Color(hex: "dddddd"))
-                        Text("\(Int(entry.grams))g · P \(Int(entry.proteinSnapshot))g C \(Int(entry.carbsSnapshot))g G \(Int(entry.fatSnapshot))g")
+                        Text("\(entry.grams.smartFormat)g · P \(entry.proteinSnapshot.smartFormat)g C \(entry.carbsSnapshot.smartFormat)g G \(entry.fatSnapshot.smartFormat)g")
                             .font(.system(size: 11)).foregroundColor(.muted)
                     }
                     Spacer()
-                    Text("\(Int(entry.kcalSnapshot))")
+                    Text("\(entry.kcalSnapshot.smartFormat)")
                         .font(.system(size: 14, weight: .bold)).foregroundColor(.muted)
                 }
                 .listRowBackground(Color.card)
@@ -138,7 +138,7 @@ struct MealSection: View {
                     .foregroundColor(.txt)
                     .textCase(nil)
                 Spacer()
-                Text("\(Int(mealKcal)) kcal")
+                Text("\(mealKcal.smartFormat) kcal")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.muted)
                     .textCase(nil)
@@ -181,18 +181,18 @@ struct EditEntrySheet: View {
                         Text("Quantità (grammi)")
                             .font(.system(size: 13, weight: .semibold)).foregroundColor(.muted)
                         TextField("100", text: $gramsInput)
-                            .keyboardType(.numberPad)
+                            .keyboardType(.decimalPad)
                             .font(.system(size: 40, weight: .bold, design: .rounded))
                             .foregroundColor(.txt).tint(.acc2)
                             .multilineTextAlignment(.center)
                             .padding(.vertical, 16).frame(width: 160)
                             .background(Color.card).cornerRadius(16)
 
-                        if let g = Double(gramsInput), g > 0 {
+                        if let g = Double(gramsInput.replacingOccurrences(of: ",", with: ".")), g > 0 {
                             // Stima kcal basata sul rapporto originale
                             let ratio = g / max(entry.grams, 1)
                             let newKcal = entry.kcalSnapshot * ratio
-                            Text("\(Int(newKcal)) kcal totali")
+                            Text("\(newKcal.smartFormat) kcal totali")
                                 .font(.system(size: 14, weight: .semibold)).foregroundColor(.acc2)
                         }
                     }
@@ -227,11 +227,11 @@ struct EditEntrySheet: View {
         }
         .presentationDetents([.medium])
         .presentationBackground(Color.bg)
-        .onAppear { gramsInput = "\(Int(entry.grams))" }
+        .onAppear { gramsInput = entry.grams.smartFormat }
     }
 
     private func save() {
-        guard let g = Double(gramsInput), g > 0 else { return }
+        guard let g = Double(gramsInput.replacingOccurrences(of: ",", with: ".")), g > 0 else { return }
         let ratio = g / max(entry.grams, 1)
         entry.grams = g
         entry.kcalSnapshot         *= ratio
@@ -273,9 +273,9 @@ struct AddFoodSheet: View {
 
     var effectiveGrams: Double {
         switch inputMode {
-        case .grams: return Double(grams) ?? 0
+        case .grams: return Double(grams.replacingOccurrences(of: ",", with: ".")) ?? 0
         case .portion:
-            let n = Double(portions) ?? 1
+            let n = Double(portions.replacingOccurrences(of: ",", with: ".")) ?? 1
             return n * (selectedFood?.portionGrams ?? 100)
         }
     }
@@ -301,7 +301,7 @@ struct AddFoodSheet: View {
                                         VStack(alignment: .leading, spacing: 6) {
                                             Text(food.name)
                                                 .font(.system(size: 18, weight: .bold)).foregroundColor(.txt)
-                                            Text("\(Int(food.kcalPer100g)) kcal · P \(Int(food.proteinPer100g))g · C \(Int(food.carbsPer100g))g · G \(Int(food.fatPer100g))g")
+                                            Text("\(food.kcalPer100g.smartFormat) kcal · P \(food.proteinPer100g.smartFormat)g · C \(food.carbsPer100g.smartFormat)g · G \(food.fatPer100g.smartFormat)g")
                                                 .font(.system(size: 12)).foregroundColor(.muted)
                                         }
                                         Spacer()
@@ -341,7 +341,7 @@ struct AddFoodSheet: View {
                                     if inputMode == .grams {
                                         Text("Quantità (grammi)")
                                             .font(.system(size: 13, weight: .semibold)).foregroundColor(.muted)
-                                        TextField("100", text: $grams).keyboardType(.numberPad)
+                                        TextField("100", text: $grams).keyboardType(.decimalPad)
                                             .font(.system(size: 32, weight: .bold, design: .rounded))
                                             .foregroundColor(.txt).multilineTextAlignment(.center)
                                             .padding(.vertical, 16).frame(width: 140)
@@ -355,13 +355,13 @@ struct AddFoodSheet: View {
                                             .padding(.vertical, 16).frame(width: 140)
                                             .background(Color.card).cornerRadius(16)
                                         if let pg = food.portionGrams {
-                                            Text("1 \(food.portionName ?? "porzione") = \(Int(pg))g")
+                                            Text("1 \(food.portionName ?? "porzione") = \(pg.smartFormat)g")
                                                 .font(.system(size: 12)).foregroundColor(.muted)
                                         }
                                     }
                                     let eg = effectiveGrams
                                     if eg > 0 {
-                                        Text("\(Int(food.kcal(for: eg))) kcal · \(Int(eg))g totali")
+                                        Text("\(food.kcal(for: eg).smartFormat) kcal · \(eg.smartFormat)g totali")
                                             .font(.system(size: 14, weight: .semibold)).foregroundColor(.acc2)
                                     }
                                 }
@@ -418,7 +418,7 @@ struct AddFoodSheet: View {
                                             Text(food.name)
                                                 .font(.system(size: 14, weight: .semibold))
                                                 .foregroundColor(Color(hex: "dddddd"))
-                                            Text("P \(Int(food.proteinPer100g))g · C \(Int(food.carbsPer100g))g · G \(Int(food.fatPer100g))g")
+                                            Text("P \(food.proteinPer100g.smartFormat)g · C \(food.carbsPer100g.smartFormat)g · G \(food.fatPer100g.smartFormat)g")
                                                 .font(.system(size: 11)).foregroundColor(.muted)
                                             if let pn = food.portionName {
                                                 Text(pn).font(.system(size: 11)).foregroundColor(.acc2)
@@ -426,7 +426,7 @@ struct AddFoodSheet: View {
                                         }
                                         Spacer()
                                         VStack(alignment: .trailing, spacing: 2) {
-                                            Text("\(Int(food.kcalPer100g))")
+                                            Text("\(food.kcalPer100g.smartFormat)")
                                                 .font(.system(size: 18, weight: .bold, design: .rounded))
                                                 .foregroundColor(.txt)
                                             Text("kcal/100g").font(.system(size: 10)).foregroundColor(.muted)

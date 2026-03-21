@@ -96,6 +96,102 @@ enum GymColor: String, Codable, CaseIterable {
     case green = "green"; case pink = "pink"
 }
 
+// MARK: - Sport Entry
+
+@Model final class SportEntry {
+    var dayKey: String = ""
+    var sportName: String = ""
+    var durationMinutes: Int = 30
+    var kcalBurned: Double = 0
+
+    init(dayKey: String, sportName: String, durationMinutes: Int, kcalBurned: Double) {
+        self.dayKey = dayKey
+        self.sportName = sportName
+        self.durationMinutes = durationMinutes
+        self.kcalBurned = kcalBurned
+    }
+}
+
+enum SportType: String, CaseIterable, Identifiable {
+    case running        = "Corsa"
+    case briskWalking   = "Camminata veloce"
+    case cycling        = "Ciclismo"
+    case swimming       = "Nuoto"
+    case soccer         = "Calcio"
+    case tennis         = "Tennis"
+    case volleyball     = "Pallavolo"
+    case basketball     = "Basket"
+    case yoga           = "Yoga"
+    case boxing         = "Boxe"
+    case pilates        = "Pilates"
+    case climbing       = "Arrampicata"
+    case skiing         = "Sci"
+    case skating        = "Pattinaggio"
+    case rowing         = "Canottaggio"
+    case dancing        = "Danza"
+    case martialArts    = "Arti marziali"
+    case jumpRope       = "Salto corda"
+    case hiking         = "Escursionismo"
+    case hiit           = "HIIT"
+
+    var id: String { rawValue }
+
+    /// kcal stimate per ora (soggetto ~75 kg)
+    var kcalPerHour: Double {
+        switch self {
+        case .running:       return 600
+        case .briskWalking:  return 300
+        case .cycling:       return 500
+        case .swimming:      return 550
+        case .soccer:        return 500
+        case .tennis:        return 450
+        case .volleyball:    return 350
+        case .basketball:    return 500
+        case .yoga:          return 200
+        case .boxing:        return 700
+        case .pilates:       return 250
+        case .climbing:      return 600
+        case .skiing:        return 500
+        case .skating:       return 400
+        case .rowing:        return 550
+        case .dancing:       return 350
+        case .martialArts:   return 600
+        case .jumpRope:      return 700
+        case .hiking:        return 400
+        case .hiit:          return 650
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .running:       return "figure.run"
+        case .briskWalking:  return "figure.walk"
+        case .cycling:       return "figure.outdoor.cycle"
+        case .swimming:      return "figure.pool.swim"
+        case .soccer:        return "soccerball"
+        case .tennis:        return "tennis.racket"
+        case .volleyball:    return "volleyball.fill"
+        case .basketball:    return "basketball.fill"
+        case .yoga:          return "figure.yoga"
+        case .boxing:        return "figure.boxing"
+        case .pilates:       return "figure.pilates"
+        case .climbing:      return "figure.climbing"
+        case .skiing:        return "figure.skiing.downhill"
+        case .skating:       return "figure.skating"
+        case .rowing:        return "figure.rowing"
+        case .dancing:       return "figure.dance"
+        case .martialArts:   return "figure.martial.arts"
+        case .jumpRope:      return "figure.jumprope"
+        case .hiking:        return "figure.hiking"
+        case .hiit:          return "bolt.heart.fill"
+        }
+    }
+
+    func estimatedKcal(minutes: Int) -> Double {
+        kcalPerHour * Double(minutes) / 60.0
+    }
+}
+
 // MARK: - App Limits
 
 @Model final class AppLimits {

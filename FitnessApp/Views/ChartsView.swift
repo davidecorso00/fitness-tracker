@@ -26,6 +26,7 @@ struct ChartsView: View {
     @Query private var allLogs: [DayLog]
     @Query private var allEntries: [FoodEntry]
     @Query private var allLimits: [AppLimits]
+    @Query private var allSports: [SportEntry]
 
     @State private var period: ChartPeriod = .week
 
@@ -49,6 +50,11 @@ struct ChartsView: View {
         return allEntries.filter { $0.dayKey == key }.reduce(0) { $0 + $1.proteinSnapshot }
     }
 
+    private func sportKcal(for date: Date) -> Double {
+        let key = date.dateKey
+        return allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
+    }
+
     // Grasso perso/guadagnato cumulativo
     // deficit kcal / 7700 = kg di grasso
     // giorni senza dati (kcal == 0) vengono saltati
@@ -61,7 +67,7 @@ struct ChartsView: View {
 
         for date in dates {
             let eaten = kcal(for: date)
-            let burned = Double(log(for: date)?.burnedKcal ?? 0)
+            let burned = Double(log(for: date)?.burnedKcal ?? 0) + sportKcal(for: date)
             if eaten == 0 && burned == 0 { continue }
             // Usa il target attuale dalle impostazioni
             let deficit = kcalTarget - eaten + burned

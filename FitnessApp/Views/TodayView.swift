@@ -12,10 +12,13 @@ struct TodayView: View {
     @State private var weightInput: String = ""
     @State private var stepsInput: String = ""
     @State private var isFuture = false
+    @State private var sportBurned: Double = 0
+    @State private var showAddSport = false
 
     // Streak: giorni consecutivi in deficit fino a ieri
     @Query private var allLogs: [DayLog]
     @Query private var allEntries: [FoodEntry]
+    @Query private var allSports: [SportEntry]
 
     private var deficitStreak: Int {
         guard let lim = limits else { return 0 }
@@ -32,6 +35,7 @@ struct TodayView: View {
                 break
             }
             let burned = Double(allLogs.first { $0.dateKey == key }?.burnedKcal ?? 0)
+                + allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
             let inDeficit = eaten < lim.kcalTarget + burned
             if inDeficit { streak += 1 } else { break }
             date = date.adding(days: -1)
@@ -106,7 +110,7 @@ struct TodayView: View {
                         // Calorie card
                         if let lim = limits, let log = dayLog {
                             CalorieCard(eaten: totals.kcal, target: lim.kcalTarget,
-                                burned: Double(log.burnedKcal), isFuture: isFuture)
+                                burned: Double(log.burnedKcal) + sportBurned, isFuture: isFuture)
                         }
 
                         // Macro bars
@@ -195,6 +199,13 @@ struct TodayView: View {
                                 }
                             }
                         }
+
+                        // Sport / Attività fisica
+                        SportSectionView(
+                            dateKey: appState.currentDateKey,
+                            showAddSport: $showAddSport,
+                            onChanged: { reload() }
+                        )
                     }
                     .padding(.horizontal, 20).padding(.bottom, 100)
                 }
@@ -210,6 +221,7 @@ struct TodayView: View {
         dayLog  = appState.dayLog(for: key, context: context)
         limits  = appState.limits(context: context)
         totals  = appState.totals(for: key, context: context)
+        sportBurned = appState.sportKcal(for: key, context: context)
         weightInput = dayLog?.weight.map { $0.formatted1 } ?? ""
         stepsInput  = (dayLog?.steps ?? 0) > 0 ? "\(dayLog!.steps)" : ""
     }
@@ -290,5 +302,239 @@ struct CalorieCard: View {
             .padding(20)
         }
         .cornerRadius(22)
+    }
+}
+
+// MARK: - Sport Section
+
+struct SportSectionView: View {
+    @Environment(\.modelContext) private var context
+    let dateKey: String
+    @Binding var showAddSport: Bool
+    let onChanged: () -> Void
+
+    @Query private var allSports: [SportEntry]
+
+    private var sports: [SportEntry] {
+        allSports.filter { $0.dayKey == dateKey }
+    }
+    private var totalSportKcal: Double {
+        sports.reduce(0) { $0 + $1.kcalBurned }
+    }
+
+    var body: some View {
+        HTCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    SectionLabel(text: "Attività fisica")
+                    Spacer()
+                    if totalSportKcal > 0 {
+                        Text("\(totalSportKcal.smartFormat) kcal")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(.gymGreen)
+                    }
+                }
+
+                ForEach(sports) { sport in
+                    HStack(spacing: 12) {
+                        // Trova icona dallo SportType se match
+                        let sportType = SportType.allCases.first { $0.rawValue == sport.sportName }
+                        Image(systemName: sportType?.icon ?? "figure.run")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.gymGreen)
+                            .frame(width: 32, height: 32)
+                            .background(Color.gymGreen.opacity(0.15))
+                            .cornerRadius(10)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(sport.sportName)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(Color(hex: "dddddd"))
+                            Text("\(sport.durationMinutes) min · \(sport.kcalBurned.smartFormat) kcal")
+                                .font(.system(size: 11)).foregroundColor(.muted)
+                        }
+                        Spacer()
+                        Button {
+                            context.delete(sport)
+                            try? context.save()
+                            onChanged()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.muted)
+                                .frame(width: 24, height: 24)
+                                .background(Color.brd).cornerRadius(8)
+                        }.buttonStyle(.plain)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Button { showAddSport = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                        Text("Aggiungi attività").font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundColor(.gymGreen)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(Color.gymGreen.opacity(0.1)).cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .sheet(isPresented: $showAddSport) {
+            AddSportSheet(dateKey: dateKey, onSaved: onChanged)
+        }
+    }
+}
+
+// MARK: - Add Sport Sheet
+
+struct AddSportSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    let dateKey: String
+    let onSaved: () -> Void
+
+    @State private var selectedSport: SportType?
+    @State private var customName = ""
+    @State private var durationInput = "30"
+    @State private var customKcalInput = ""
+    @State private var useCustom = false
+
+    private var sportName: String {
+        useCustom ? customName : (selectedSport?.rawValue ?? "")
+    }
+
+    private var estimatedKcal: Double {
+        let mins = Int(durationInput) ?? 30
+        if useCustom {
+            return Double(customKcalInput.replacingOccurrences(of: ",", with: ".")) ?? 0
+        }
+        return selectedSport?.estimatedKcal(minutes: mins) ?? 0
+    }
+
+    private var isValid: Bool {
+        !sportName.isEmpty && estimatedKcal > 0
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack { Color.bg.ignoresSafeArea() }
+            .overlay(
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 14) {
+                        // Toggle custom / predefined
+                        HStack(spacing: 0) {
+                            Button { useCustom = false } label: {
+                                Text("Sport predefiniti")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(!useCustom ? .white : .muted)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                                    .background(!useCustom ? Color.acc : Color.clear).cornerRadius(10)
+                            }.buttonStyle(.plain)
+                            Button { useCustom = true } label: {
+                                Text("Personalizzato")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(useCustom ? .white : .muted)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                                    .background(useCustom ? Color.acc : Color.clear).cornerRadius(10)
+                            }.buttonStyle(.plain)
+                        }
+                        .padding(4).background(Color.card).cornerRadius(14)
+
+                        if useCustom {
+                            HTCard {
+                                VStack(spacing: 12) {
+                                    SectionLabel(text: "Nome attività").frame(maxWidth: .infinity, alignment: .leading)
+                                    TextField("Es. Paddle", text: $customName)
+                                        .foregroundColor(.txt).tint(.acc2)
+                                        .padding(12).background(Color.brd).cornerRadius(12)
+                                    NumericField(label: "Durata (min)", value: $durationInput, color: .gymGreen)
+                                    NumericField(label: "Kcal bruciate", value: $customKcalInput, color: .gymOrange)
+                                }
+                            }
+                        } else {
+                            HTCard {
+                                VStack(spacing: 8) {
+                                    SectionLabel(text: "Scegli sport").frame(maxWidth: .infinity, alignment: .leading)
+                                    LazyVGrid(columns: [
+                                        GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())
+                                    ], spacing: 8) {
+                                        ForEach(SportType.allCases) { sport in
+                                            Button {
+                                                selectedSport = sport
+                                            } label: {
+                                                VStack(spacing: 6) {
+                                                    Image(systemName: sport.icon)
+                                                        .font(.system(size: 18, weight: .semibold))
+                                                        .foregroundColor(selectedSport == sport ? .gymGreen : .muted)
+                                                    Text(sport.rawValue)
+                                                        .font(.system(size: 10, weight: .bold))
+                                                        .foregroundColor(selectedSport == sport ? .txt : .muted)
+                                                        .lineLimit(1).minimumScaleFactor(0.7)
+                                                }
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 12)
+                                                .background(selectedSport == sport ? Color.gymGreen.opacity(0.15) : Color.brd)
+                                                .cornerRadius(12)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(selectedSport == sport ? Color.gymGreen.opacity(0.5) : .clear, lineWidth: 1.5)
+                                                )
+                                            }.buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if selectedSport != nil {
+                                HTCard {
+                                    VStack(spacing: 12) {
+                                        NumericField(label: "Durata (min)", value: $durationInput, color: .gymGreen)
+                                        HStack {
+                                            Text("Kcal stimate")
+                                                .font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "cccccc"))
+                                            Spacer()
+                                            Text("\(estimatedKcal.smartFormat) kcal")
+                                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                                .foregroundColor(.gymOrange)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Button { save() } label: {
+                            Text("Aggiungi attività")
+                                .font(.system(size: 16, weight: .bold)).foregroundColor(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 16)
+                                .background(isValid ? Color.gymGreen : Color.brd).cornerRadius(16)
+                        }
+                        .buttonStyle(.plain).disabled(!isValid).padding(.bottom, 40)
+                    }
+                    .padding(20)
+                }
+            )
+            .navigationTitle("Attività fisica")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annulla") { dismiss() }.foregroundColor(.muted)
+                }
+            }
+        }
+        .presentationBackground(Color.bg)
+    }
+
+    private func save() {
+        let mins = Int(durationInput) ?? 30
+        let kcal = estimatedKcal
+        let entry = SportEntry(dayKey: dateKey, sportName: sportName,
+                               durationMinutes: mins, kcalBurned: kcal)
+        context.insert(entry)
+        try? context.save()
+        onSaved()
+        dismiss()
     }
 }

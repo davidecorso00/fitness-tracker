@@ -5,7 +5,7 @@ import SwiftData
 struct FitnessAppApp: App {
 
     let container: ModelContainer = {
-        let schema = Schema([FoodItem.self, FoodEntry.self, DayLog.self, AppLimits.self])
+        let schema = Schema([FoodItem.self, FoodEntry.self, DayLog.self, AppLimits.self, SportEntry.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
             return try ModelContainer(for: schema, configurations: config)
