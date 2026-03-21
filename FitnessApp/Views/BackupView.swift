@@ -10,6 +10,7 @@ struct BackupData: Codable {
     var entries: [EntryBackup]
     var logs: [LogBackup]
     var limits: LimitsBackup?
+    var sports: [SportBackup]?
 }
 
 struct FoodBackup: Codable {
@@ -37,6 +38,10 @@ struct LimitsBackup: Codable {
     var stepsTarget: Int; var weightTarget: Double; var startDate: Date
 }
 
+struct SportBackup: Codable {
+    var dayKey: String; var sportName: String; var durationMinutes: Int; var kcalBurned: Double
+}
+
 // MARK: - Backup Manager
 
 @MainActor
@@ -47,6 +52,7 @@ final class BackupManager {
         let entries = (try? context.fetch(FetchDescriptor<FoodEntry>())) ?? []
         let logs    = (try? context.fetch(FetchDescriptor<DayLog>())) ?? []
         let limits  = (try? context.fetch(FetchDescriptor<AppLimits>()))?.first
+        let sports  = (try? context.fetch(FetchDescriptor<SportEntry>())) ?? []
 
         let backup = BackupData(
             foods: foods.map {
@@ -71,6 +77,10 @@ final class BackupManager {
                     sugarTarget: $0.sugarTarget, saturatedFatTarget: $0.saturatedFatTarget,
                     saltTarget: $0.saltTarget, stepsTarget: $0.stepsTarget,
                     weightTarget: $0.weightTarget, startDate: $0.startDate)
+            },
+            sports: sports.map {
+                SportBackup(dayKey: $0.dayKey, sportName: $0.sportName,
+                    durationMinutes: $0.durationMinutes, kcalBurned: $0.kcalBurned)
             }
         )
 
@@ -90,6 +100,7 @@ final class BackupManager {
         try context.delete(model: FoodEntry.self)
         try context.delete(model: DayLog.self)
         try context.delete(model: AppLimits.self)
+        try context.delete(model: SportEntry.self)
 
         // Ripristina foods
         for f in backup.foods {
@@ -129,6 +140,12 @@ final class BackupManager {
             lim.stepsTarget = l.stepsTarget; lim.weightTarget = l.weightTarget
             lim.startDate = l.startDate
             context.insert(lim)
+        }
+
+        // Ripristina sport
+        for s in backup.sports ?? [] {
+            context.insert(SportEntry(dayKey: s.dayKey, sportName: s.sportName,
+                durationMinutes: s.durationMinutes, kcalBurned: s.kcalBurned))
         }
 
         try context.save()

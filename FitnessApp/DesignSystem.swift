@@ -93,7 +93,7 @@ struct MacroBar: View {
             }
             .frame(height: 7)
 
-            Text("\(Int(value))/\(Int(target))g")
+            Text("\(value.smartFormat)/\(target.smartFormat)g")
                 .font(.system(size: small ? 11 : 12, weight: .bold))
                 .foregroundColor(Color(hex: "aaaaaa"))
                 .frame(width: 62, alignment: .trailing)
@@ -133,6 +133,10 @@ struct GymDot: View {
 extension Double {
     var formatted0: String { String(format: "%.0f", self) }
     var formatted1: String { String(format: "%.1f", self) }
+    /// Mostra 1 decimale se non intero, altrimenti 0 decimali
+    var smartFormat: String {
+        self == floor(self) ? String(format: "%.0f", self) : String(format: "%.1f", self)
+    }
 }
 
 extension Int {
