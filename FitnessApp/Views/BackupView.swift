@@ -113,11 +113,20 @@ final class BackupManager {
         // Ripristina entries
         for e in backup.entries {
             let meal = MealType(rawValue: e.meal) ?? .snack
-            let tempFood = FoodItem(name: e.foodName, kcalPer100g: e.kcal,
-                proteinPer100g: e.protein, carbsPer100g: e.carbs, fatPer100g: e.fat,
-                fiberPer100g: e.fiber, sugarPer100g: e.sugar,
-                saturatedFatPer100g: e.saturatedFat, saltPer100g: e.salt)
-            let entry = FoodEntry(food: tempFood, grams: e.grams, meal: meal, date: e.date)
+            // Creiamo l'entry direttamente e impostiamo gli snapshot salvati
+            // NON usiamo FoodEntry(food:grams:) perché ricalcolerebbe i valori
+            let dummyFood = FoodItem(name: e.foodName, kcalPer100g: 0, proteinPer100g: 0,
+                carbsPer100g: 0, fatPer100g: 0)
+            let entry = FoodEntry(food: dummyFood, grams: e.grams, meal: meal, date: e.date)
+            // Sovrascriviamo con i valori originali dal backup
+            entry.kcalSnapshot = e.kcal
+            entry.proteinSnapshot = e.protein
+            entry.carbsSnapshot = e.carbs
+            entry.fatSnapshot = e.fat
+            entry.fiberSnapshot = e.fiber
+            entry.sugarSnapshot = e.sugar
+            entry.saturatedFatSnapshot = e.saturatedFat
+            entry.saltSnapshot = e.salt
             context.insert(entry)
         }
 

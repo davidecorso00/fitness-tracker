@@ -28,65 +28,72 @@ struct RootView: View {
         .environmentObject(appState)
         .onAppear { appState.seedFoodsIfNeeded(context: context) }
         .sheet(isPresented: $showSettings) {
-            SettingsView()
-                .environmentObject(appState)
+            SettingsView().environmentObject(appState)
         }
     }
 }
 
-// MARK: - Custom Tab Bar
+// MARK: - Apple Fitness Tab Bar
 
 struct HTTabBar: View {
     @Binding var selected: Int
 
-    private let items: [(icon: String, label: String)] = [
-        ("circle.fill",       "Oggi"),
-        ("list.bullet",       "Diario"),
-        ("plus.rectangle",    "Alimenti"),
-        ("waveform.path.ecg", "Grafici"),
-        ("chart.bar.fill",    "Risultati"),
+    private let items: [(icon: String, iconFill: String, label: String)] = [
+        ("heart",              "heart.fill",              "Sommario"),
+        ("list.bullet",        "list.bullet",             "Diario"),
+        ("fork.knife",         "fork.knife",              "Alimenti"),
+        ("chart.xyaxis.line",  "chart.xyaxis.line",       "Grafici"),
+        ("trophy",             "trophy.fill",             "Risultati"),
     ]
 
     var body: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(Color.brd2).frame(height: 1)
-            HStack(spacing: 4) {
+            HStack(spacing: 0) {
                 ForEach(0..<items.count, id: \.self) { i in
                     Button {
-                        withAnimation(.spring(response: 0.3)) { selected = i }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selected = i }
                     } label: {
-                        VStack(spacing: 5) {
-                            Image(systemName: items[i].icon)
-                                .font(.system(size: 22, weight: .medium))
+                        VStack(spacing: 2) {
+                            Image(systemName: selected == i ? items[i].iconFill : items[i].icon)
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(selected == i ? .white : .muted)
+                                .frame(width: 28, height: 22)
                             Text(items[i].label)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(selected == i ? .white : .muted)
                         }
-                        .foregroundColor(selected == i ? .txt : .muted)
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 14)
-                            .fill(selected == i ? Color.acc.opacity(0.15) : .clear))
-                        .overlay(alignment: .bottom) {
-                            if selected == i {
-                                RoundedRectangle(cornerRadius: 2).fill(Color.acc2)
-                                    .frame(width: 24, height: 3).offset(y: 1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            Group {
+                                if selected == i {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.15))
+                                        .matchedGeometryEffect(id: "tabpill", in: tabNS)
+                                } else {
+                                    Color.clear
+                                }
                             }
-                        }
+                        )
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 8).padding(.top, 8).frame(height: 82)
-            Color.bg.frame(maxWidth: .infinity).frame(height: 34)
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 28)
         }
-        .background(Color.bg.opacity(0.95).background(.ultraThinMaterial))
+        .background(.ultraThinMaterial.opacity(0.97))
+        .environment(\.colorScheme, .dark)
     }
+
+    @Namespace private var tabNS
 }
 
-// MARK: - Shared Page Header con gear
+// MARK: - Page Header
 
 struct PageHeader: View {
-    let title: String
-    let subtitle: String?
+    let title: String; let subtitle: String?
     @Binding var showSettings: Bool
 
     init(_ title: String, subtitle: String? = nil, showSettings: Binding<Bool>) {
@@ -95,23 +102,16 @@ struct PageHeader: View {
 
     var body: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundColor(.txt)
                 if let sub = subtitle {
-                    Text(sub).font(.system(size: 13)).foregroundColor(.muted)
+                    Text(sub).font(.system(size: 13, weight: .medium)).foregroundColor(.muted)
                 }
             }
             Spacer()
-            Button { showSettings = true } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.muted)
-                    .frame(width: 36, height: 36)
-                    .background(Color.card).cornerRadius(12)
-            }
-            .buttonStyle(.plain)
+            GearBtn { showSettings = true }
         }
         .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
     }

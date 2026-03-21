@@ -1,68 +1,55 @@
 import SwiftUI
 import SwiftData
 
+// Wrapper for sheet(item:) — fixes meal always defaulting to Colazione
+struct AddSheetItem: Identifiable {
+    let id = UUID()
+    let meal: MealType
+    let date: Date
+}
+
 struct DiaryView: View {
     @Binding var showSettings: Bool
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var appState: AppState
 
-    @State private var showAddSheet = false
-    @State private var selectedMeal: MealType = .breakfast
+    @State private var addSheetItem: AddSheetItem?
 
     var body: some View {
-        ZStack { Color.bg.ignoresSafeArea() }
+        ZStack { Color.clear }
         .overlay(
             VStack(spacing: 0) {
-                // Header
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Diario")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundColor(.txt)
                         Text(appState.currentDate.fullDisplay)
-                            .font(.system(size: 13)).foregroundColor(.muted)
+                            .font(.system(size: 13, weight: .medium)).foregroundColor(.muted)
                     }
                     Spacer()
                     HStack(spacing: 8) {
-                        Button { appState.goBack() } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 14, weight: .semibold)).foregroundColor(.muted)
-                                .frame(width: 30, height: 30).background(Color.card).cornerRadius(9)
-                        }.buttonStyle(.plain)
-                        Button { appState.goForward() } label: {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(appState.canGoForward ? .muted : .brd)
-                                .frame(width: 30, height: 30).background(Color.card).cornerRadius(9)
-                        }.buttonStyle(.plain).disabled(!appState.canGoForward)
-                        Button { showSettings = true } label: {
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 18, weight: .medium)).foregroundColor(.muted)
-                                .frame(width: 30, height: 30).background(Color.card).cornerRadius(9)
-                        }.buttonStyle(.plain)
+                        NavBtn(icon: "chevron.left") { appState.goBack() }
+                        NavBtn(icon: "chevron.right", disabled: !appState.canGoForward) { appState.goForward() }
+                        GearBtn { showSettings = true }
                     }
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
 
-                // Lista pasti
                 List {
                     ForEach(MealType.allCases, id: \.self) { meal in
-                        MealSection(
-                            meal: meal,
-                            dateKey: appState.currentDateKey
-                        ) {
-                            selectedMeal = meal
-                            showAddSheet = true
+                        MealSection(meal: meal, dateKey: appState.currentDateKey) {
+                            addSheetItem = AddSheetItem(meal: meal, date: appState.currentDate)
                         }
                     }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .background(Color.bg)
+                .background(Color.clear)
             }
         )
-        .sheet(isPresented: $showAddSheet) {
-            AddFoodSheet(meal: selectedMeal, date: appState.currentDate)
+        .sheet(item: $addSheetItem) { item in
+            AddFoodSheet(meal: item.meal, date: item.date)
         }
     }
 }
@@ -87,47 +74,37 @@ struct MealSection: View {
         Section {
             ForEach(entries) { entry in
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(entry.foodName)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Color(hex: "dddddd"))
-                        Text("\(entry.grams.smartFormat)g · P \(entry.proteinSnapshot.smartFormat)g C \(entry.carbsSnapshot.smartFormat)g G \(entry.fatSnapshot.smartFormat)g")
+                            .foregroundColor(.txt)
+                        Text("\(entry.grams.smartFormat)g · P \(entry.proteinSnapshot.smartFormat) C \(entry.carbsSnapshot.smartFormat) G \(entry.fatSnapshot.smartFormat)")
                             .font(.system(size: 11)).foregroundColor(.muted)
                     }
                     Spacer()
                     Text("\(entry.kcalSnapshot.smartFormat)")
-                        .font(.system(size: 14, weight: .bold)).foregroundColor(.muted)
+                        .font(.system(size: 15, weight: .bold, design: .rounded)).foregroundColor(.muted)
                 }
                 .listRowBackground(Color.card)
-                .listRowSeparatorTint(Color.brd2)
+                .listRowSeparatorTint(Color.brd)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
-                        context.delete(entry)
-                        try? context.save()
-                    } label: {
-                        Label("Elimina", systemImage: "trash")
-                    }
+                        context.delete(entry); try? context.save()
+                    } label: { Label("Elimina", systemImage: "trash") }
                 }
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                    Button {
-                        editingEntry = entry
-                    } label: {
-                        Label("Modifica", systemImage: "pencil")
-                    }
+                    Button { editingEntry = entry } label: { Label("Modifica", systemImage: "pencil") }
                     .tint(.acc)
                 }
             }
 
-            // Pulsante aggiungi
-            Button {
-                onAdd()
-            } label: {
+            Button { onAdd() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus").font(.system(size: 12, weight: .bold))
                     Text("Aggiungi a \(meal.rawValue.lowercased())")
                         .font(.system(size: 13, weight: .bold))
                 }
-                .foregroundColor(.acc2).padding(.vertical, 4)
+                .foregroundColor(.acc).padding(.vertical, 4)
             }
             .listRowBackground(Color.card)
             .listRowSeparator(.hidden)
@@ -135,13 +112,11 @@ struct MealSection: View {
             HStack {
                 Text(meal.rawValue)
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.txt)
-                    .textCase(nil)
+                    .foregroundColor(.txt).textCase(nil)
                 Spacer()
                 Text("\(mealKcal.smartFormat) kcal")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.muted)
-                    .textCase(nil)
+                    .foregroundColor(.muted).textCase(nil)
             }
             .padding(.vertical, 4)
             .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
@@ -180,32 +155,19 @@ struct EditEntrySheet: View {
                     VStack(spacing: 8) {
                         Text("Quantità (grammi)")
                             .font(.system(size: 13, weight: .semibold)).foregroundColor(.muted)
-                        TextField("100", text: $gramsInput)
-                            .keyboardType(.decimalPad)
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
-                            .foregroundColor(.txt).tint(.acc2)
-                            .multilineTextAlignment(.center)
-                            .padding(.vertical, 16).frame(width: 160)
-                            .background(Color.card).cornerRadius(16)
+                        BigInputField(placeholder: "100", value: $gramsInput)
+                            .frame(maxWidth: 200)
 
                         if let g = Double(gramsInput.replacingOccurrences(of: ",", with: ".")), g > 0 {
-                            // Stima kcal basata sul rapporto originale
                             let ratio = g / max(entry.grams, 1)
                             let newKcal = entry.kcalSnapshot * ratio
                             Text("\(newKcal.smartFormat) kcal totali")
-                                .font(.system(size: 14, weight: .semibold)).foregroundColor(.acc2)
+                                .font(.system(size: 14, weight: .semibold)).foregroundColor(.acc)
                         }
                     }
 
-                    Button {
-                        save()
-                    } label: {
-                        Text("Salva modifiche")
-                            .font(.system(size: 16, weight: .bold)).foregroundColor(.white)
-                            .frame(maxWidth: .infinity).padding(.vertical, 16)
-                            .background(Color.acc).cornerRadius(16)
-                    }
-                    .buttonStyle(.plain).padding(.horizontal, 20)
+                    PillButton(label: "Salva modifiche") { save() }
+                        .padding(.horizontal, 20)
 
                     Spacer()
                 }
@@ -218,10 +180,8 @@ struct EditEntrySheet: View {
                 }
                 ToolbarItem(placement: .destructiveAction) {
                     Button("Elimina") {
-                        context.delete(entry)
-                        try? context.save()
-                        dismiss()
-                    }.foregroundColor(.gymOrange)
+                        context.delete(entry); try? context.save(); dismiss()
+                    }.foregroundColor(.gymPink)
                 }
             }
         }
@@ -242,8 +202,7 @@ struct EditEntrySheet: View {
         entry.sugarSnapshot        *= ratio
         entry.saturatedFatSnapshot *= ratio
         entry.saltSnapshot         *= ratio
-        try? context.save()
-        dismiss()
+        try? context.save(); dismiss()
     }
 }
 
@@ -285,12 +244,14 @@ struct AddFoodSheet: View {
             ZStack { Color.bg.ignoresSafeArea() }
             .overlay(
                 VStack(spacing: 0) {
+                    // Search bar
                     HStack {
                         Image(systemName: "magnifyingglass").foregroundColor(.muted)
                         TextField("Cerca alimento...", text: $search)
-                            .foregroundColor(.txt).tint(.acc2)
+                            .foregroundColor(.txt).tint(.acc)
                     }
-                    .padding(12).background(Color.card).cornerRadius(14)
+                    .padding(12)
+                    .background(Color.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 12)
 
                     if let food = selectedFood {
@@ -307,8 +268,8 @@ struct AddFoodSheet: View {
                                         Spacer()
                                         Button { showEditFood = true } label: {
                                             Image(systemName: "pencil")
-                                                .font(.system(size: 13, weight: .semibold)).foregroundColor(.acc2)
-                                                .padding(8).background(Color.brd).cornerRadius(10)
+                                                .font(.system(size: 13, weight: .semibold)).foregroundColor(.acc)
+                                                .padding(8).background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                                         }.buttonStyle(.plain)
                                     }
                                 }
@@ -319,21 +280,26 @@ struct AddFoodSheet: View {
                                         Button { inputMode = .grams } label: {
                                             Text("Grammi")
                                                 .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(inputMode == .grams ? .white : .muted)
+                                                .foregroundColor(inputMode == .grams ? .black : .muted)
                                                 .frame(maxWidth: .infinity).padding(.vertical, 10)
-                                                .background(inputMode == .grams ? Color.acc : Color.clear)
-                                                .cornerRadius(10)
+                                                .background(
+                                                    inputMode == .grams ? Color.acc : Color.clear,
+                                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                )
                                         }.buttonStyle(.plain)
                                         Button { inputMode = .portion } label: {
                                             Text(food.portionName ?? "Porzione")
                                                 .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(inputMode == .portion ? .white : .muted)
+                                                .foregroundColor(inputMode == .portion ? .black : .muted)
                                                 .frame(maxWidth: .infinity).padding(.vertical, 10)
-                                                .background(inputMode == .portion ? Color.acc : Color.clear)
-                                                .cornerRadius(10)
+                                                .background(
+                                                    inputMode == .portion ? Color.acc : Color.clear,
+                                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                )
                                         }.buttonStyle(.plain)
                                     }
-                                    .padding(4).background(Color.card).cornerRadius(14)
+                                    .padding(4)
+                                    .background(Color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     .padding(.horizontal, 20)
                                 }
 
@@ -341,19 +307,13 @@ struct AddFoodSheet: View {
                                     if inputMode == .grams {
                                         Text("Quantità (grammi)")
                                             .font(.system(size: 13, weight: .semibold)).foregroundColor(.muted)
-                                        TextField("100", text: $grams).keyboardType(.decimalPad)
-                                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                                            .foregroundColor(.txt).multilineTextAlignment(.center)
-                                            .padding(.vertical, 16).frame(width: 140)
-                                            .background(Color.card).cornerRadius(16)
+                                        BigInputField(placeholder: "100", value: $grams)
+                                            .frame(maxWidth: 180)
                                     } else {
                                         Text("Numero di porzioni")
                                             .font(.system(size: 13, weight: .semibold)).foregroundColor(.muted)
-                                        TextField("1", text: $portions).keyboardType(.decimalPad)
-                                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                                            .foregroundColor(.txt).multilineTextAlignment(.center)
-                                            .padding(.vertical, 16).frame(width: 140)
-                                            .background(Color.card).cornerRadius(16)
+                                        BigInputField(placeholder: "1", value: $portions)
+                                            .frame(maxWidth: 180)
                                         if let pg = food.portionGrams {
                                             Text("1 \(food.portionName ?? "porzione") = \(pg.smartFormat)g")
                                                 .font(.system(size: 12)).foregroundColor(.muted)
@@ -362,17 +322,12 @@ struct AddFoodSheet: View {
                                     let eg = effectiveGrams
                                     if eg > 0 {
                                         Text("\(food.kcal(for: eg).smartFormat) kcal · \(eg.smartFormat)g totali")
-                                            .font(.system(size: 14, weight: .semibold)).foregroundColor(.acc2)
+                                            .font(.system(size: 14, weight: .semibold)).foregroundColor(.acc)
                                     }
                                 }
 
-                                Button { addFood(food) } label: {
-                                    Text("Aggiungi a \(meal.rawValue)")
-                                        .font(.system(size: 16, weight: .bold)).foregroundColor(.white)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 16)
-                                        .background(Color.acc).cornerRadius(16)
-                                }
-                                .buttonStyle(.plain).padding(.horizontal, 20)
+                                PillButton(label: "Aggiungi a \(meal.rawValue)") { addFood(food) }
+                                    .padding(.horizontal, 20)
 
                                 Button("Scegli altro alimento") { selectedFood = nil }
                                     .font(.system(size: 14, weight: .semibold)).foregroundColor(.muted)
@@ -382,29 +337,22 @@ struct AddFoodSheet: View {
                             .padding(.top, 20)
                         }
                     } else {
-                        // Pulsante inserimento al volo
-                        Button {
-                            showQuickAdd = true
-                        } label: {
+                        // Quick add
+                        Button { showQuickAdd = true } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "bolt.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.gymOrange)
+                                    .font(.system(size: 14, weight: .bold)).foregroundColor(.gymOrange)
                                 Text("Inserisci al volo")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.gymOrange)
+                                    .font(.system(size: 14, weight: .bold)).foregroundColor(.gymOrange)
                                 Spacer()
                                 Text("senza salvare nel database")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.muted)
+                                    .font(.system(size: 11)).foregroundColor(.muted)
                             }
                             .padding(14)
-                            .background(Color.gymOrange.opacity(0.1))
-                            .cornerRadius(14)
+                            .background(Color.gymOrange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, 20).padding(.bottom, 8)
 
                         List {
                             ForEach(filtered) { food in
@@ -414,27 +362,25 @@ struct AddFoodSheet: View {
                                     inputMode = food.portionName != nil ? .portion : .grams
                                 } label: {
                                     HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: 3) {
                                             Text(food.name)
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(Color(hex: "dddddd"))
+                                                .font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
                                             Text("P \(food.proteinPer100g.smartFormat)g · C \(food.carbsPer100g.smartFormat)g · G \(food.fatPer100g.smartFormat)g")
                                                 .font(.system(size: 11)).foregroundColor(.muted)
                                             if let pn = food.portionName {
-                                                Text(pn).font(.system(size: 11)).foregroundColor(.acc2)
+                                                Text(pn).font(.system(size: 11)).foregroundColor(.acc)
                                             }
                                         }
                                         Spacer()
                                         VStack(alignment: .trailing, spacing: 2) {
                                             Text("\(food.kcalPer100g.smartFormat)")
-                                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                                                .foregroundColor(.txt)
+                                                .font(.system(size: 18, weight: .bold, design: .rounded)).foregroundColor(.txt)
                                             Text("kcal/100g").font(.system(size: 10)).foregroundColor(.muted)
                                         }
                                     }
                                 }
-                                .listRowBackground(Color.bg)
-                                .listRowSeparatorTint(Color.brd2)
+                                .listRowBackground(Color.card)
+                                .listRowSeparatorTint(Color.brd)
                             }
                         }
                         .listStyle(.plain)
@@ -468,7 +414,7 @@ struct AddFoodSheet: View {
     }
 }
 
-// MARK: - Quick Add Sheet (al volo, senza salvare nel database)
+// MARK: - Quick Add Sheet
 
 struct QuickAddSheet: View {
     @Environment(\.modelContext) private var context
@@ -500,7 +446,6 @@ struct QuickAddSheet: View {
             .overlay(
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 14) {
-                        // Info banner
                         HStack(spacing: 10) {
                             Image(systemName: "bolt.fill")
                                 .font(.system(size: 14)).foregroundColor(.gymOrange)
@@ -508,26 +453,26 @@ struct QuickAddSheet: View {
                                 .font(.system(size: 13)).foregroundColor(.muted)
                         }
                         .padding(14)
-                        .background(Color.gymOrange.opacity(0.1))
-                        .cornerRadius(14)
+                        .background(Color.gymOrange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                         HTCard {
                             VStack(spacing: 12) {
                                 SectionLabel(text: "Nome").frame(maxWidth: .infinity, alignment: .leading)
                                 TextField("Es. Pizza margherita", text: $name)
-                                    .foregroundColor(.txt).tint(.acc2)
-                                    .padding(12).background(Color.brd).cornerRadius(12)
+                                    .foregroundColor(.txt).tint(.acc)
+                                    .padding(12)
+                                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                         }
 
                         HTCard {
                             VStack(spacing: 12) {
                                 SectionLabel(text: "Valori nutrizionali").frame(maxWidth: .infinity, alignment: .leading)
-                                NumericField(label: "Grammi",        value: $grams,       color: .txt)
-                                NumericField(label: "Calorie (kcal)", value: $kcal,       color: .acc2)
-                                NumericField(label: "Proteine (g)",   value: $protein,    color: .acc2)
-                                NumericField(label: "Carboidrati (g)", value: $carbs,     color: .gymBlue)
-                                NumericField(label: "Grassi (g)",     value: $fat,        color: .gymOrange)
+                                NumericField(label: "Grammi",         value: $grams,   color: .txt)
+                                NumericField(label: "Calorie (kcal)", value: $kcal,    color: .acc)
+                                NumericField(label: "Proteine (g)",   value: $protein, color: .acc)
+                                NumericField(label: "Carboidrati (g)", value: $carbs,  color: .gymBlue)
+                                NumericField(label: "Grassi (g)",     value: $fat,     color: .gymOrange)
                             }
                         }
 
@@ -541,13 +486,8 @@ struct QuickAddSheet: View {
                             }
                         }
 
-                        Button { save() } label: {
-                            Text("Aggiungi a \(meal.rawValue)")
-                                .font(.system(size: 16, weight: .bold)).foregroundColor(.white)
-                                .frame(maxWidth: .infinity).padding(.vertical, 16)
-                                .background(isValid ? Color.acc : Color.brd).cornerRadius(16)
-                        }
-                        .buttonStyle(.plain).disabled(!isValid).padding(.bottom, 40)
+                        PillButton(label: "Aggiungi a \(meal.rawValue)", disabled: !isValid) { save() }
+                            .padding(.bottom, 40)
                     }
                     .padding(20)
                 }
@@ -574,9 +514,6 @@ struct QuickAddSheet: View {
         let sf  = parse(saturatedFat)
         let sa  = parse(salt)
 
-        // Crea un FoodItem temporaneo (non inserito nel context)
-        // I valori sono già totali per la quantità indicata,
-        // li convertiamo in per-100g per usare FoodEntry normalmente
         let factor = g > 0 ? 100.0 / g : 1.0
         let tempFood = FoodItem(
             name: name,
@@ -591,8 +528,6 @@ struct QuickAddSheet: View {
         )
 
         let entry = FoodEntry(food: tempFood, grams: g, meal: meal, date: date)
-        context.insert(entry)
-        try? context.save()
-        dismiss()
+        context.insert(entry); try? context.save(); dismiss()
     }
 }

@@ -79,23 +79,19 @@ struct ChartsView: View {
     }
 
     var body: some View {
-        ZStack { Color.bg.ignoresSafeArea() }
+        ZStack { Color.clear }
         .overlay(
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 14) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Grafici")
-                                .font(.system(size: 26, weight: .bold, design: .rounded))
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
                                 .foregroundColor(.txt)
-                            Text("I tuoi progressi").font(.system(size: 13)).foregroundColor(.muted)
+                            Text("I tuoi progressi").font(.system(size: 13, weight: .medium)).foregroundColor(.muted)
                         }
                         Spacer()
-                        Button { showSettings = true } label: {
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 18, weight: .medium)).foregroundColor(.muted)
-                                .frame(width: 34, height: 34).background(Color.card).cornerRadius(11)
-                        }.buttonStyle(.plain)
+                        GearBtn { showSettings = true }
                     }
                     .padding(.horizontal, 20).padding(.top, 16)
 
@@ -112,7 +108,11 @@ struct ChartsView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(4).background(Color.card).cornerRadius(14).padding(.horizontal, 20)
+                    .padding(4)
+                    .background(Color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.04), lineWidth: 0.5))
+                    .padding(.horizontal, 20)
 
                     // GRASSO PERSO — primo grafico, il più importante
                     let kcalTarget = allLimits.first?.kcalTarget ?? 2255
@@ -214,7 +214,7 @@ struct ChartsView: View {
                     ChartCard(title: "Calorie") {
                         Chart(kcalData, id: \.date) { item in
                             BarMark(x: .value("Data", item.date, unit: .day), y: .value("kcal", item.kcal))
-                                .foregroundStyle(item.kcal > kcalTarget ? Color.gymOrange : Color.acc2)
+                                .foregroundStyle(item.kcal > kcalTarget ? Color.gymOrange : Color.ringRed)
                                 .cornerRadius(6)
                         }
                         .chartXAxis {
@@ -267,11 +267,11 @@ struct ChartsView: View {
                     ChartCard(title: "Proteine") {
                         Chart(protData, id: \.date) { item in
                             LineMark(x: .value("Data", item.date), y: .value("g", item.p))
-                                .foregroundStyle(Color.acc2).interpolationMethod(.catmullRom)
+                                .foregroundStyle(Color.ringGreen).interpolationMethod(.catmullRom)
                             AreaMark(x: .value("Data", item.date), y: .value("g", item.p))
-                                .foregroundStyle(Color.acc2.opacity(0.15).gradient).interpolationMethod(.catmullRom)
+                                .foregroundStyle(Color.ringGreen.opacity(0.15).gradient).interpolationMethod(.catmullRom)
                             RuleMark(y: .value("Target", allLimits.first?.proteinTarget ?? 200))
-                                .foregroundStyle(Color.acc2.opacity(0.4))
+                                .foregroundStyle(Color.ringGreen.opacity(0.4))
                                 .lineStyle(StrokeStyle(dash: [4, 4]))
                         }
                         .chartXAxis {
@@ -301,7 +301,7 @@ struct ChartsView: View {
                     ChartCard(title: "Passi") {
                         Chart(stepsData, id: \.date) { item in
                             BarMark(x: .value("Data", item.date, unit: .day), y: .value("Passi", item.steps))
-                                .foregroundStyle(Color.gymBlue.opacity(item.steps >= (allLimits.first?.stepsTarget ?? 10000) ? 1.0 : 0.65))
+                                .foregroundStyle(Color.ringBlue.opacity(item.steps >= (allLimits.first?.stepsTarget ?? 10000) ? 1.0 : 0.65))
                                 .cornerRadius(6)
                         }
                         .chartXAxis {
@@ -328,7 +328,7 @@ struct ChartsView: View {
                         }
                     }
                 }
-                .padding(.bottom, 100)
+                .padding(.bottom, 120)
             }
         )
     }
