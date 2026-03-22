@@ -10,7 +10,22 @@ struct FitnessAppApp: App {
         do {
             return try ModelContainer(for: schema, configurations: config)
         } catch {
-            fatalError("ModelContainer error: \(error)")
+            // Se il DB esistente non è compatibile, cancella e ricrea
+            print("⚠️ ModelContainer fallito: \(error). Ricreo il database...")
+            // Cancella tutti i file .store nella directory
+            let storeURL = config.url
+            let dir = storeURL.deletingLastPathComponent()
+            if let files = try? FileManager.default.contentsOfDirectory(at: dir,
+                includingPropertiesForKeys: nil) {
+                for file in files where file.lastPathComponent.contains(".store") {
+                    try? FileManager.default.removeItem(at: file)
+                }
+            }
+            do {
+                return try ModelContainer(for: schema, configurations: config)
+            } catch {
+                fatalError("ModelContainer error dopo reset: \(error)")
+            }
         }
     }()
 

@@ -78,7 +78,10 @@ struct SettingsView: View {
                                 }
                                 .padding(.horizontal, 18).padding(.vertical, 13)
                             }
-                            .background(Color.card).cornerRadius(20).padding(.horizontal, 20)
+                            .background(Color.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(Color.white.opacity(0.04), lineWidth: 0.5))
+                            .padding(.horizontal, 20)
                         }
                     }
                     .padding(.bottom, 40)
@@ -113,7 +116,10 @@ struct LimitGroup<Content: View>: View {
                 .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 6)
             content
         }
-        .background(Color.card).cornerRadius(20).padding(.horizontal, 20)
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .stroke(Color.white.opacity(0.04), lineWidth: 0.5))
+        .padding(.horizontal, 20)
     }
 }
 
@@ -133,7 +139,7 @@ struct LimitRow: View {
             }
             .padding(.horizontal, 18).padding(.vertical, 13)
             .overlay(alignment: .top) {
-                if !last { Rectangle().fill(Color.card2).frame(height: 1).padding(.leading, 18) }
+                if !last { Rectangle().fill(Color.white.opacity(0.04)).frame(height: 0.5).padding(.leading, 18) }
             }
         }
         .buttonStyle(.plain)
@@ -159,20 +165,14 @@ struct LimitEditSheet: View {
                         Text(field.label).font(.system(size: 18, weight: .bold)).foregroundColor(.txt)
                         if !field.unit.isEmpty { Text(field.unit).font(.system(size: 14)).foregroundColor(.muted) }
                     }
-                    TextField("0", text: $input)
-                        .keyboardType(field.isInt ? .numberPad : .decimalPad)
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .foregroundColor(.txt).tint(.acc2).multilineTextAlignment(.center)
-                        .padding(.vertical, 20).frame(width: 200).background(Color.card).cornerRadius(20)
-                    Button {
+                    BigInputField(placeholder: "0", value: $input, keyboardType: field.isInt ? .numberPad : .decimalPad)
+                        .frame(maxWidth: 220)
+                    PillButton(label: "Salva") {
                         let raw = input.replacingOccurrences(of: ",", with: ".")
                         if let v = Double(raw) { field.onSave(v) }
                         dismiss()
-                    } label: {
-                        Text("Salva").font(.system(size: 17, weight: .bold)).foregroundColor(.white)
-                            .frame(width: 200).padding(.vertical, 16).background(Color.acc).cornerRadius(16)
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: 220)
                     Spacer()
                 }
             )

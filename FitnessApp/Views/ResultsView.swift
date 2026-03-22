@@ -133,13 +133,13 @@ struct ResultsView: View {
                             value: s.totalDeficit >= 0
                                 ? "-\(Int(s.totalDeficit)) kcal"
                                 : "+\(Int(abs(s.totalDeficit))) kcal",
-                            color: s.totalDeficit >= 0 ? .gymGreen : .gymOrange,
+                            color: s.totalDeficit >= 0 ? .ringGreen : .gymOrange,
                             icon: "bolt.fill"
                         )
                         ResultCard(
                             label: "Media calorie ingerite",
                             value: "\(Int(s.avgKcalEaten)) kcal/g",
-                            color: .acc2,
+                            color: .ringRed,
                             icon: "fork.knife"
                         )
                         ResultCard(
@@ -161,18 +161,18 @@ struct ResultsView: View {
                         ResultCard(
                             label: "Passi totali",
                             value: s.totalSteps.stepsFormatted,
-                            color: .gymBlue,
+                            color: .ringBlue,
                             icon: "shoeprints.fill"
                         )
                         ResultCard(
                             label: "Media passi/giorno",
                             value: Int(s.avgSteps).stepsFormatted,
-                            color: .gymBlue,
+                            color: .ringBlue,
                             icon: "figure.walk"
                         )
                     }
                 }
-                .padding(.bottom, 100)
+                .padding(.bottom, 120)
             }
         )
         .onAppear { limits = appState.limits(context: context) }
@@ -232,25 +232,23 @@ struct ResultCard: View {
     var body: some View {
         HStack(spacing: 16) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(color.opacity(0.15))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(color.opacity(0.12))
                     .frame(width: 44, height: 44)
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(color)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(label)
-                    .font(.system(size: 13)).foregroundColor(.muted)
-                Text(value)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(color)
+                Text(label).font(.system(size: 13)).foregroundColor(.muted)
+                Text(value).font(.system(size: 20, weight: .bold, design: .rounded)).foregroundColor(color)
             }
             Spacer()
         }
         .padding(16)
-        .background(Color.card)
-        .cornerRadius(18)
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(Color.white.opacity(0.04), lineWidth: 0.5))
         .padding(.horizontal, 20)
     }
 }
