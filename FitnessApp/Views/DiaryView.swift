@@ -276,30 +276,11 @@ struct AddFoodSheet: View {
                                 .padding(.horizontal, 20)
 
                                 if food.portionName != nil {
-                                    HStack(spacing: 0) {
-                                        Button { inputMode = .grams } label: {
-                                            Text("Grammi")
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(inputMode == .grams ? .black : .muted)
-                                                .frame(maxWidth: .infinity).padding(.vertical, 10)
-                                                .background(
-                                                    inputMode == .grams ? Color.acc : Color.clear,
-                                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                )
-                                        }.buttonStyle(.plain)
-                                        Button { inputMode = .portion } label: {
-                                            Text(food.portionName ?? "Porzione")
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(inputMode == .portion ? .black : .muted)
-                                                .frame(maxWidth: .infinity).padding(.vertical, 10)
-                                                .background(
-                                                    inputMode == .portion ? Color.acc : Color.clear,
-                                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                )
-                                        }.buttonStyle(.plain)
+                                    Picker("Modalità", selection: $inputMode) {
+                                        Text("Grammi").tag(InputMode.grams)
+                                        Text(food.portionName ?? "Porzione").tag(InputMode.portion)
                                     }
-                                    .padding(4)
-                                    .background(Color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .pickerStyle(.segmented)
                                     .padding(.horizontal, 20)
                                 }
 

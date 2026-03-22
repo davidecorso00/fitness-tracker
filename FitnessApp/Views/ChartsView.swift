@@ -96,22 +96,12 @@ struct ChartsView: View {
                     .padding(.horizontal, 20).padding(.top, 16)
 
                     // Period selector
-                    HStack(spacing: 6) {
+                    Picker("Periodo", selection: $period) {
                         ForEach(ChartPeriod.allCases, id: \.self) { p in
-                            Button { withAnimation { period = p } } label: {
-                                Text(p.rawValue)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(period == p ? .white : .muted)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
-                                    .background(period == p ? Color.acc : .clear).cornerRadius(10)
-                            }
-                            .buttonStyle(.plain)
+                            Text(p.rawValue).tag(p)
                         }
                     }
-                    .padding(4)
-                    .background(Color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.04), lineWidth: 0.5))
+                    .pickerStyle(.segmented)
                     .padding(.horizontal, 20)
 
                     // GRASSO PERSO — primo grafico, il più importante

@@ -8,6 +8,24 @@ struct RootView: View {
     @State private var showSettings = false
 
     var body: some View {
+        Group {
+            if #available(iOS 18.0, *) {
+                modernTabView
+            } else {
+                legacyTabView
+            }
+        }
+        .environmentObject(appState)
+        .onAppear { appState.seedFoodsIfNeeded(context: context) }
+        .sheet(isPresented: $showSettings) {
+            SettingsView().environmentObject(appState)
+        }
+    }
+
+    // MARK: - iOS 18+ Tab API (gets Liquid Glass on iOS 26 automatically)
+
+    @available(iOS 18.0, *)
+    private var modernTabView: some View {
         TabView(selection: $selectedTab) {
             Tab("Sommario", systemImage: "heart.fill", value: 0) {
                 TodayView(showSettings: $showSettings)
@@ -26,10 +44,36 @@ struct RootView: View {
             }
         }
         .tint(.ringRed)
-        .environmentObject(appState)
-        .onAppear { appState.seedFoodsIfNeeded(context: context) }
-        .sheet(isPresented: $showSettings) {
-            SettingsView().environmentObject(appState)
+        .modifier(TabMinimizeModifier())
+    }
+
+    // MARK: - iOS 17 fallback
+
+    private var legacyTabView: some View {
+        TabView(selection: $selectedTab) {
+            TodayView(showSettings: $showSettings)
+                .tabItem { Label("Sommario", systemImage: "heart.fill") }.tag(0)
+            DiaryView(showSettings: $showSettings)
+                .tabItem { Label("Diario", systemImage: "list.bullet") }.tag(1)
+            FoodsView(showSettings: $showSettings)
+                .tabItem { Label("Alimenti", systemImage: "fork.knife") }.tag(2)
+            ChartsView(showSettings: $showSettings)
+                .tabItem { Label("Grafici", systemImage: "chart.xyaxis.line") }.tag(3)
+            ResultsView(showSettings: $showSettings)
+                .tabItem { Label("Risultati", systemImage: "trophy.fill") }.tag(4)
+        }
+        .tint(.ringRed)
+    }
+}
+
+// MARK: - Tab Minimize Modifier (iOS 26+)
+
+struct TabMinimizeModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
         }
     }
 }

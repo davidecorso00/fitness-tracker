@@ -156,10 +156,22 @@ struct TodayView: View {
                             HTCard {
                                 VStack(alignment: .leading, spacing: 10) {
                                     SectionLabel(text: "Palestra oggi")
-                                    HStack(spacing: 10) {
-                                        ForEach(GymColor.allCases, id: \.self) { gc in
-                                            GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
-                                                log.gymColor = gc; try? context.save(); reload()
+                                    if #available(iOS 26.0, *) {
+                                        GlassEffectContainer {
+                                            HStack(spacing: 10) {
+                                                ForEach(GymColor.allCases, id: \.self) { gc in
+                                                    GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
+                                                        log.gymColor = gc; try? context.save(); reload()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        HStack(spacing: 10) {
+                                            ForEach(GymColor.allCases, id: \.self) { gc in
+                                                GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
+                                                    log.gymColor = gc; try? context.save(); reload()
+                                                }
                                             }
                                         }
                                     }
@@ -331,15 +343,10 @@ struct SportSectionView: View {
                         }.buttonStyle(.plain)
                     }.padding(.vertical, 4)
                 }
-                Button { showAddSport = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                        Text("Aggiungi attività").font(.system(size: 13, weight: .bold))
-                    }
-                    .foregroundColor(.ringGreen)
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    .background(Color.ringGreen.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }.buttonStyle(.plain)
+                GlassButton(icon: "plus", label: "Aggiungi attività", color: .ringGreen) {
+                    showAddSport = true
+                }
+                .frame(maxWidth: .infinity)
             }
         }
         .sheet(isPresented: $showAddSport) {
@@ -374,11 +381,11 @@ struct AddSportSheet: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 14) {
                         // Toggle
-                        HStack(spacing: 0) {
-                            segmentBtn("Sport predefiniti", selected: !useCustom) { useCustom = false }
-                            segmentBtn("Personalizzato", selected: useCustom) { useCustom = true }
+                        Picker("Tipo", selection: $useCustom) {
+                            Text("Sport predefiniti").tag(false)
+                            Text("Personalizzato").tag(true)
                         }
-                        .padding(4).background(Color.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .pickerStyle(.segmented)
 
                         if useCustom {
                             HTCard {
@@ -454,15 +461,5 @@ struct AddSportSheet: View {
         let mins = Int(durationInput) ?? 30
         context.insert(SportEntry(dayKey: dateKey, sportName: sportName, durationMinutes: mins, kcalBurned: estimatedKcal))
         try? context.save(); onSaved(); dismiss()
-    }
-
-    @ViewBuilder
-    private func segmentBtn(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(.system(size: 14, weight: .semibold))
-                .foregroundColor(selected ? .white : .muted)
-                .frame(maxWidth: .infinity).padding(.vertical, 10)
-                .background(selected ? Color.acc : Color.clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }.buttonStyle(.plain)
     }
 }
