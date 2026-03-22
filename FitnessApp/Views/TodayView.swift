@@ -118,7 +118,7 @@ struct TodayView: View {
                             HTCard {
                                 VStack(alignment: .leading, spacing: 8) {
                                     SectionLabel(text: "Peso kg")
-                                    BigInputField(placeholder: "0.0", value: $weightInput, color: .txt)
+                                    BigInputField(placeholder: "0.0", value: $weightInput, color: .txt, fontSize: 22)
                                     PillButton(label: "Salva", color: .acc, textColor: .black) {
                                         saveWeight()
                                     }
@@ -130,7 +130,7 @@ struct TodayView: View {
                                 HTCard {
                                     VStack(alignment: .leading, spacing: 8) {
                                         SectionLabel(text: "Passi")
-                                        BigInputField(placeholder: "0", value: $stepsInput, color: .ringBlue, keyboardType: .numberPad)
+                                        BigInputField(placeholder: "0", value: $stepsInput, color: .ringBlue, keyboardType: .numberPad, fontSize: 22)
                                         PillButton(label: "OK", color: .gymBlue, textColor: .white) {
                                             saveSteps()
                                         }

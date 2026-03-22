@@ -16,7 +16,7 @@ struct DiaryView: View {
     @State private var addSheetItem: AddSheetItem?
 
     var body: some View {
-        ZStack { Color.clear }
+        ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             VStack(spacing: 0) {
                 HStack {

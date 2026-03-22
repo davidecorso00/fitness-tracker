@@ -20,7 +20,7 @@ struct FoodsView: View {
     }
 
     var body: some View {
-        ZStack { Color.clear }
+        ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             VStack(spacing: 0) {
                 HStack(alignment: .bottom) {

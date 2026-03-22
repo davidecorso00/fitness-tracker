@@ -94,7 +94,7 @@ struct ResultsView: View {
     private func daysWithSteps(_ s: Stats) -> Int { s.daysWithSteps }
 
     var body: some View {
-        ZStack { Color.clear }
+        ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {

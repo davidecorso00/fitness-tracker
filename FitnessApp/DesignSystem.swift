@@ -184,30 +184,30 @@ struct BigInputField: View {
     @Binding var value: String
     var color: Color = .txt
     var keyboardType: UIKeyboardType = .decimalPad
+    var fontSize: CGFloat = 32
 
     var body: some View {
         HStack(spacing: 0) {
-            // Spacer per centrare il testo anche con X visibile
             if !value.isEmpty {
-                Color.clear.frame(width: 36)
+                Color.clear.frame(width: 30)
             }
             TextField(placeholder, text: $value)
                 .keyboardType(keyboardType)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: fontSize, weight: .bold, design: .rounded))
                 .foregroundColor(color).tint(color)
                 .multilineTextAlignment(.center)
-                .padding(.vertical, 14)
+                .padding(.vertical, 12)
             if !value.isEmpty {
                 Button { value = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: 16))
                         .foregroundColor(.muted.opacity(0.5))
                 }
                 .buttonStyle(.plain)
-                .frame(width: 36)
+                .frame(width: 30)
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 6)
         .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

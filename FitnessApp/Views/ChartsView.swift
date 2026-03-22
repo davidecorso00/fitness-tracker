@@ -79,7 +79,7 @@ struct ChartsView: View {
     }
 
     var body: some View {
-        ZStack { Color.clear }
+        ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 14) {
