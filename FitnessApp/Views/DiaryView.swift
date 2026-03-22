@@ -14,6 +14,7 @@ struct DiaryView: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var addSheetItem: AddSheetItem?
+    @State private var editingEntry: FoodEntry?
 
     var body: some View {
         ZStack { Color.bg.ignoresSafeArea() }
@@ -38,7 +39,7 @@ struct DiaryView: View {
 
                 List {
                     ForEach(MealType.allCases, id: \.self) { meal in
-                        MealSection(meal: meal, dateKey: appState.currentDateKey) {
+                        MealSection(meal: meal, dateKey: appState.currentDateKey, editingEntry: $editingEntry) {
                             addSheetItem = AddSheetItem(meal: meal, date: appState.currentDate)
                         }
                     }
@@ -51,6 +52,9 @@ struct DiaryView: View {
         .sheet(item: $addSheetItem) { item in
             AddFoodSheet(meal: item.meal, date: item.date)
         }
+        .sheet(item: $editingEntry) { entry in
+            EditEntrySheet(entry: entry)
+        }
     }
 }
 
@@ -60,10 +64,10 @@ struct MealSection: View {
     @Environment(\.modelContext) private var context
     let meal: MealType
     let dateKey: String
+    @Binding var editingEntry: FoodEntry?
     let onAdd: () -> Void
 
     @Query private var allEntries: [FoodEntry]
-    @State private var editingEntry: FoodEntry?
 
     var entries: [FoodEntry] {
         allEntries.filter { $0.dayKey == dateKey && $0.meal == meal }
@@ -121,9 +125,6 @@ struct MealSection: View {
             .padding(.vertical, 4)
             .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
         }
-        .sheet(item: $editingEntry) { entry in
-            EditEntrySheet(entry: entry)
-        }
     }
 }
 
@@ -180,7 +181,7 @@ struct EditEntrySheet: View {
                 }
                 ToolbarItem(placement: .destructiveAction) {
                     Button("Elimina") {
-                        context.delete(entry); try? context.save(); dismiss()
+                        context.delete(entry); try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss()
                     }.foregroundColor(.gymPink)
                 }
             }
@@ -202,7 +203,7 @@ struct EditEntrySheet: View {
         entry.sugarSnapshot        *= ratio
         entry.saturatedFatSnapshot *= ratio
         entry.saltSnapshot         *= ratio
-        try? context.save(); dismiss()
+        try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss()
     }
 }
 
@@ -391,7 +392,7 @@ struct AddFoodSheet: View {
         let g = effectiveGrams
         guard g > 0 else { return }
         let entry = FoodEntry(food: food, grams: g, meal: meal, date: date)
-        context.insert(entry); try? context.save(); dismiss()
+        context.insert(entry); try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss()
     }
 }
 
@@ -509,6 +510,6 @@ struct QuickAddSheet: View {
         )
 
         let entry = FoodEntry(food: tempFood, grams: g, meal: meal, date: date)
-        context.insert(entry); try? context.save(); dismiss()
+        context.insert(entry); try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss()
     }
 }

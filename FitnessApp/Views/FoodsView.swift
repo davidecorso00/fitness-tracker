@@ -291,6 +291,7 @@ struct FoodFormSheet: View {
             context.insert(newFood)
         }
         try? context.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }
 }

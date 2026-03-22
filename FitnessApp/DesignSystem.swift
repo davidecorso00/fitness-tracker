@@ -117,13 +117,6 @@ struct GymDot: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? gymColor.color.opacity(0.18) : Color.card2)
-                    .frame(width: 52, height: 52)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(isSelected ? gymColor.color.opacity(0.5) : .clear, lineWidth: 2)
-                    )
                 if gymColor == .rest {
                     Image(systemName: "moon.fill")
                         .font(.system(size: 16, weight: .semibold))
@@ -134,10 +127,37 @@ struct GymDot: View {
                         .frame(width: isSelected ? 14 : 10)
                 }
             }
+            .frame(width: 52, height: 52)
+            .modifier(GymDotBackground(gymColor: gymColor, isSelected: isSelected))
             .scaleEffect(isSelected ? 1.05 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct GymDotBackground: ViewModifier {
+    let gymColor: GymColor; let isSelected: Bool
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    isSelected
+                        ? .regular.tint(gymColor.color).interactive()
+                        : .regular,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                )
+        } else {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(isSelected ? gymColor.color.opacity(0.18) : Color.card2)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(isSelected ? gymColor.color.opacity(0.5) : .clear, lineWidth: 2)
+                )
+        }
     }
 }
 

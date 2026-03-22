@@ -161,7 +161,7 @@ struct TodayView: View {
                                             HStack(spacing: 10) {
                                                 ForEach(GymColor.allCases, id: \.self) { gc in
                                                     GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
-                                                        log.gymColor = gc; try? context.save(); reload()
+                                                        log.gymColor = gc; try? context.save(); reload(); UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                     }
                                                 }
                                             }
@@ -170,7 +170,7 @@ struct TodayView: View {
                                         HStack(spacing: 10) {
                                             ForEach(GymColor.allCases, id: \.self) { gc in
                                                 GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
-                                                    log.gymColor = gc; try? context.save(); reload()
+                                                    log.gymColor = gc; try? context.save(); reload(); UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                 }
                                             }
                                         }
@@ -200,19 +200,45 @@ struct TodayView: View {
         limits = appState.limits(context: context)
         totals = appState.totals(for: key, context: context)
         sportBurned = appState.sportKcal(for: key, context: context)
-        weightInput = dayLog?.weight.map { $0.formatted1 } ?? ""
+
+        // Pre-fill peso: se oggi non c'è peso, mostra l'ultimo registrato
+        if let w = dayLog?.weight {
+            weightInput = w.formatted1
+        } else {
+            weightInput = lastKnownWeight?.formatted1 ?? ""
+        }
         stepsInput = (dayLog?.steps ?? 0) > 0 ? "\(dayLog!.steps)" : ""
     }
+
+    /// Ultimo peso registrato in qualsiasi giorno precedente
+    private var lastKnownWeight: Double? {
+        let today = Calendar.current.startOfDay(for: Date())
+        var date = today.adding(days: -1)
+        for _ in 0..<90 {
+            let key = date.dateKey
+            if let log = allLogs.first(where: { $0.dateKey == key }), let w = log.weight {
+                return w
+            }
+            date = date.adding(days: -1)
+        }
+        return nil
+    }
+
     private func saveWeight() {
         guard let v = Double(weightInput.replacingOccurrences(of: ",", with: ".")) else { return }
-        dayLog?.weight = v; try? context.save(); dismissKeyboard()
+        dayLog?.weight = v; try? context.save()
+        hapticSuccess(); dismissKeyboard()
     }
     private func saveSteps() {
         guard let v = Int(stepsInput) else { return }
-        dayLog?.steps = v; try? context.save(); reload(); dismissKeyboard()
+        dayLog?.steps = v; try? context.save(); reload()
+        hapticSuccess(); dismissKeyboard()
     }
     private func dismissKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    private func hapticSuccess() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
 
