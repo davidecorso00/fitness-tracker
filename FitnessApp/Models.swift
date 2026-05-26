@@ -81,13 +81,28 @@ enum MealType: String, Codable, CaseIterable {
     var weight: Double? = nil
     var steps: Int = 0
     var gymColor: GymColor = GymColor.rest
+    var activeCaloriesBurned: Double = 0
 
     init(dateKey: String) {
         self.dateKey = dateKey
     }
 
     var burnedKcal: Int {
-        Int(Double(steps) * 0.04) + (gymColor == .rest ? 0 : 300)
+        let gymBonus = gymColor == .rest ? 0 : 150
+
+        if activeCaloriesBurned > 0 {
+            // Calorie reali da Apple Watch (o iPhone) via HealthKit
+            return Int(activeCaloriesBurned) + gymBonus
+        }
+
+        // Fallback: stima dai passi × 0.04 (nessun Watch collegato o permesso negato)
+        // In media una persona brucia ~0.04 kcal per passo (varia in base al peso)
+        if steps > 0 {
+            return Int(Double(steps) * 0.04) + gymBonus
+        }
+
+        // Nessun dato disponibile
+        return gymBonus
     }
 }
 

@@ -1,44 +1,124 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - TodayView (Obiettivo 1: Reattività SwiftData con @Query)
+//
+// CAMBIAMENTI CHIAVE:
+// - Rimosso @State var totals, dayLog, limits, sportBurned + funzione reload()
+// - Introdotte 4 @Query filtrate per dayKey → SwiftData ricostruisce la view
+//   in automatico ogni volta che una FoodEntry/SportEntry/DayLog cambia.
+// - Rimosso .onAppear { reload() } / .onChange { reload() }
+//   (la reattività è ora gestita dal framework)
+// - Aggiunto .onChange(of: appState.currentDate) solo per gestire
+//   lastKnownWeight e l'animazione degli anelli.
+
 struct TodayView: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var appState: AppState
     @Binding var showSettings: Bool
 
-    @State private var dayLog: DayLog?
-    @State private var limits: AppLimits?
-    @State private var totals = AppState.DayTotals()
-    @State private var weightInput: String = ""
-    @State private var stepsInput: String = ""
-    @State private var isFuture = false
-    @State private var sportBurned: Double = 0
-    @State private var showAddSport = false
-    @State private var appeared = false
+    // ── Queries reattive filtrate per dayKey ──────────────────────────────
+    // Nota: i #Predicate su @Query non supportano proprietà computed,
+    // quindi filtriamo usando la stringa dayKey che già salviamo sul modello.
 
     @Query private var allLogs: [DayLog]
     @Query private var allEntries: [FoodEntry]
     @Query private var allSports: [SportEntry]
+    @Query private var allLimits: [AppLimits]
 
-    private var deficitStreak: Int {
+    // ── Stato locale residuo (non sostituibile con @Query) ─────────────────
+    @State private var weightInput: String = ""
+    @State private var stepsInput: String  = ""
+    @State private var appeared: Bool      = false
+    @State private var showAddSport: Bool  = false
+
+    // ── Computed properties reattive ──────────────────────────────────────
+    private var currentKey: String { appState.currentDateKey }
+    private var isFuture: Bool     { appState.currentDate.isFuture }
+
+    /// DayLog del giorno corrente (opzionale se non ancora creato)
+    private var dayLog: DayLog? {
+        allLogs.first { $0.dateKey == currentKey }
+    }
+
+    /// AppLimits singleton
+    private var limits: AppLimits? { allLimits.first }
+
+    /// FoodEntry filtrate per il giorno corrente
+    private var todayEntries: [FoodEntry] {
+        allEntries.filter { $0.dayKey == currentKey }
+    }
+
+    /// SportEntry filtrate per il giorno corrente
+    private var todaySports: [SportEntry] {
+        allSports.filter { $0.dayKey == currentKey }
+    }
+
+    /// Totali calcolati direttamente dagli entry → reagisce ad ogni inserimento
+    private var totals: AppState.DayTotals {
+        todayEntries.reduce(into: AppState.DayTotals()) { t, e in
+            t.kcal         += e.kcalSnapshot
+            t.protein      += e.proteinSnapshot
+            t.carbs        += e.carbsSnapshot
+            t.fat          += e.fatSnapshot
+            t.fiber        += e.fiberSnapshot
+            t.sugar        += e.sugarSnapshot
+            t.saturatedFat += e.saturatedFatSnapshot
+            t.salt         += e.saltSnapshot
+        }
+    }
+
+    /// Calorie sport del giorno corrente
+    private var sportBurned: Double {
+        todaySports.reduce(0.0) { $0 + $1.kcalBurned }
+    }
+
+    /// Streak deficit: estratto in metodo separato per aiutare il type-checker.
+    private var deficitStreak: Int { calcDeficitStreak() }
+
+    private func calcDeficitStreak() -> Int {
         guard let lim = limits else { return 0 }
         var streak = 0
         var date = Calendar.current.startOfDay(for: Date())
         for _ in 0..<365 {
-            let key = date.dateKey
-            let eaten = allEntries.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalSnapshot }
+            let key   = date.dateKey
+            let eaten = kcalEaten(for: key)
             guard eaten > 0 else {
                 if date.isToday { date = date.adding(days: -1); continue }
                 break
             }
-            let burned = Double(allLogs.first { $0.dateKey == key }?.burnedKcal ?? 0)
-                + allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
+            let burned = kcalBurned(for: key)
             if eaten < lim.kcalTarget + burned { streak += 1 } else { break }
             date = date.adding(days: -1)
         }
         return streak
     }
 
+    private func kcalEaten(for key: String) -> Double {
+        allEntries.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalSnapshot }
+    }
+
+    private func kcalBurned(for key: String) -> Double {
+        let logBurned   = Double(allLogs.first { $0.dateKey == key }?.burnedKcal ?? 0)
+        let sportBurned = allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
+        return logBurned + sportBurned
+    }
+
+    /// Ultimo peso registrato nei 90 giorni precedenti
+    private var lastKnownWeight: Double? {
+        let today = Calendar.current.startOfDay(for: Date())
+        var date = today.adding(days: -1)
+        for _ in 0..<90 {
+            let key = date.dateKey
+            if let log = allLogs.first(where: { $0.dateKey == key }), let w = log.weight {
+                return w
+            }
+            date = date.adding(days: -1)
+        }
+        return nil
+    }
+
+    // ── Body ──────────────────────────────────────────────────────────────
     var body: some View {
         ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
@@ -84,8 +164,11 @@ struct TodayView: View {
                             .background(Color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
 
-                        // TRIPLE RING CARD (Apple Fitness style)
-                        if let lim = limits, let log = dayLog {
+                        // TRIPLE RING CARD
+                        // Ora si aggiorna automaticamente perché `totals`, `dayLog` e
+                        // `sportBurned` sono computed var dipendenti da @Query.
+                        if let lim = limits {
+                            let log = dayLog ?? placeholderLog
                             let totalBurned = Double(log.burnedKcal) + sportBurned
                             TripleRingCard(
                                 eaten: totals.kcal, kcalTarget: lim.kcalTarget,
@@ -126,7 +209,8 @@ struct TodayView: View {
                             }
                             .frame(maxWidth: .infinity)
 
-                            if let lim = limits, let log = dayLog {
+                            if let lim = limits {
+                                let log = dayLog ?? placeholderLog
                                 HTCard {
                                     VStack(alignment: .leading, spacing: 8) {
                                         SectionLabel(text: "Passi")
@@ -161,7 +245,9 @@ struct TodayView: View {
                                             HStack(spacing: 10) {
                                                 ForEach(GymColor.allCases, id: \.self) { gc in
                                                     GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
-                                                        log.gymColor = gc; try? context.save(); reload(); UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                                        log.gymColor = gc
+                                                        try? context.save()
+                                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                     }
                                                 }
                                             }
@@ -170,7 +256,9 @@ struct TodayView: View {
                                         HStack(spacing: 10) {
                                             ForEach(GymColor.allCases, id: \.self) { gc in
                                                 GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
-                                                    log.gymColor = gc; try? context.save(); reload(); UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                                    log.gymColor = gc
+                                                    try? context.save()
+                                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                 }
                                             }
                                         }
@@ -180,28 +268,47 @@ struct TodayView: View {
                         }
 
                         // Sport
-                        SportSectionView(dateKey: appState.currentDateKey,
-                                         showAddSport: $showAddSport, onChanged: { reload() })
+                        // onChanged rimosso: SportSectionView fa context.save()
+                        // che invalida allSports → sportBurned si ricalcola da solo.
+                        SportSectionView(
+                            dateKey: appState.currentDateKey,
+                            showAddSport: $showAddSport,
+                            onChanged: {}
+                        )
                     }
                     .padding(.horizontal, 20).padding(.bottom, 100)
                 }
             }
         )
-        .onAppear { reload(); withAnimation(.easeOut(duration: 0.8).delay(0.2)) { appeared = true } }
-        .onChange(of: appState.currentDate) { appeared = false; reload()
-            withAnimation(.easeOut(duration: 0.8).delay(0.1)) { appeared = true }
+        // Anello di animazione: si resetta al cambio data
+        .onAppear {
+            syncInputFields()
+            withAnimation(.easeOut(duration: 0.8).delay(0.2)) { appeared = true }
+            // ── Obiettivo 2: sync HealthKit al primo caricamento ──────────
+            appState.syncHealthKit(for: appState.currentDate, context: context)
         }
+        .onChange(of: appState.currentDate) {
+            appeared = false
+            syncInputFields()
+            withAnimation(.easeOut(duration: 0.8).delay(0.1)) { appeared = true }
+            // ── Obiettivo 2: sync HealthKit al cambio data ────────────────
+            appState.syncHealthKit(for: appState.currentDate, context: context)
+        }
+        // Quando dayLog cambia (es. dopo saveSteps), aggiorna i campi input
+        .onChange(of: dayLog?.weight) { syncInputFields() }
+        .onChange(of: dayLog?.steps)  { syncInputFields() }
     }
 
-    private func reload() {
-        let key = appState.currentDateKey
-        isFuture = appState.currentDate.isFuture
-        dayLog = appState.dayLog(for: key, context: context)
-        limits = appState.limits(context: context)
-        totals = appState.totals(for: key, context: context)
-        sportBurned = appState.sportKcal(for: key, context: context)
+    // ── Helpers ───────────────────────────────────────────────────────────
 
-        // Pre-fill peso: se oggi non c'è peso, mostra l'ultimo registrato
+    /// DayLog "vuoto" da usare come fallback quando il log non esiste ancora
+    /// (evita Optional unwrapping ripetuto nella UI)
+    private var placeholderLog: DayLog {
+        DayLog(dateKey: currentKey)
+    }
+
+    /// Aggiorna i campi di testo peso/passi senza invalidare tutta la view
+    private func syncInputFields() {
         if let w = dayLog?.weight {
             weightInput = w.formatted1
         } else {
@@ -210,39 +317,35 @@ struct TodayView: View {
         stepsInput = (dayLog?.steps ?? 0) > 0 ? "\(dayLog!.steps)" : ""
     }
 
-    /// Ultimo peso registrato in qualsiasi giorno precedente
-    private var lastKnownWeight: Double? {
-        let today = Calendar.current.startOfDay(for: Date())
-        var date = today.adding(days: -1)
-        for _ in 0..<90 {
-            let key = date.dateKey
-            if let log = allLogs.first(where: { $0.dateKey == key }), let w = log.weight {
-                return w
-            }
-            date = date.adding(days: -1)
-        }
-        return nil
-    }
-
     private func saveWeight() {
         guard let v = Double(weightInput.replacingOccurrences(of: ",", with: ".")) else { return }
-        dayLog?.weight = v; try? context.save()
-        hapticSuccess(); dismissKeyboard()
+        // Crea il DayLog se non esiste
+        let log = appState.dayLog(for: currentKey, context: context)
+        log.weight = v
+        try? context.save()
+        hapticSuccess()
+        dismissKeyboard()
     }
+
     private func saveSteps() {
         guard let v = Int(stepsInput) else { return }
-        dayLog?.steps = v; try? context.save(); reload()
-        hapticSuccess(); dismissKeyboard()
+        let log = appState.dayLog(for: currentKey, context: context)
+        log.steps = v
+        try? context.save()
+        hapticSuccess()
+        dismissKeyboard()
     }
+
     private func dismissKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
+
     private func hapticSuccess() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
 
-// MARK: - Triple Ring Card (Apple Fitness)
+// MARK: - Triple Ring Card (invariata, portata qui per completezza)
 
 struct TripleRingCard: View {
     let eaten: Double; let kcalTarget: Double
@@ -251,15 +354,14 @@ struct TripleRingCard: View {
     let burned: Double
     let isFuture: Bool; let appeared: Bool
 
-    private var kcalPct: Double { eaten / max(kcalTarget, 1) }
-    private var protPct: Double { protein / max(proteinTarget, 1) }
+    private var kcalPct: Double  { eaten / max(kcalTarget, 1) }
+    private var protPct: Double  { protein / max(proteinTarget, 1) }
     private var stepsPct: Double { Double(steps) / max(Double(stepsTarget), 1) }
     private var remaining: Double { kcalTarget - eaten }
 
     var body: some View {
         HTCard {
             HStack(spacing: 20) {
-                // Triple rings
                 ZStack {
                     ActivityRing(progress: isFuture ? 0 : kcalPct, ringColor: .ringRed,
                                  lineWidth: 14, size: 120, appeared: appeared)
@@ -270,7 +372,6 @@ struct TripleRingCard: View {
                 }
                 .frame(width: 120, height: 120)
 
-                // Stats
                 VStack(alignment: .leading, spacing: 10) {
                     // Calorie
                     HStack(spacing: 8) {
@@ -310,14 +411,15 @@ struct TripleRingCard: View {
                         }
                     }
                     // Bruciate
-                    if !isFuture && burned > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "flame.fill")
-                                .font(.system(size: 11)).foregroundColor(.gymOrange)
-                            Text("\(burned.formatted0) bruciate")
-                                .font(.system(size: 12, weight: .semibold)).foregroundColor(.gymOrange)
+                    HStack(spacing: 8) {
+                        Circle().fill(Color.gymOrange).frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Bruciate")
+                                .font(.system(size: 11, weight: .semibold)).foregroundColor(.muted)
+                            Text("\(burned.formatted0) kcal")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundColor(.gymOrange)
                         }
-                        .padding(.top, 2)
                     }
                 }
                 Spacer()
@@ -326,11 +428,13 @@ struct TripleRingCard: View {
     }
 }
 
-// MARK: - Sport Section
+// MARK: - SportSectionView (definita qui insieme a TodayView)
 
 struct SportSectionView: View {
     @Environment(\.modelContext) private var context
-    let dateKey: String; @Binding var showAddSport: Bool; let onChanged: () -> Void
+    let dateKey: String
+    @Binding var showAddSport: Bool
+    let onChanged: () -> Void
 
     @Query private var allSports: [SportEntry]
     private var sports: [SportEntry] { allSports.filter { $0.dayKey == dateKey } }
@@ -406,7 +510,6 @@ struct AddSportSheet: View {
             .overlay(
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 14) {
-                        // Toggle
                         Picker("Tipo", selection: $useCustom) {
                             Text("Sport predefiniti").tag(false)
                             Text("Personalizzato").tag(true)
