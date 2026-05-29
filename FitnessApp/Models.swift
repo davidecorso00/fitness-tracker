@@ -299,6 +299,47 @@ func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -
     }
 }
 
+// MARK: - Medicine
+
+@Model final class Medicine {
+    var stableId: String = ""
+    var name: String = ""
+    var category: String = "Farmaco"
+    var isDaily: Bool = true
+    var useTime: Bool = false
+    var timingPhase: String = "Mattina"
+    var timingHour: Int = 8
+    var timingMinute: Int = 0
+    var createdAt: Date = Date()
+
+    init(name: String, category: String, isDaily: Bool, useTime: Bool,
+         timingPhase: String, timingHour: Int, timingMinute: Int) {
+        self.stableId = UUID().uuidString
+        self.name = name
+        self.category = category
+        self.isDaily = isDaily
+        self.useTime = useTime
+        self.timingPhase = timingPhase
+        self.timingHour = timingHour
+        self.timingMinute = timingMinute
+        self.createdAt = Date()
+    }
+}
+
+@Model final class MedicineLog {
+    var medicineStableId: String = ""
+    var dayKey: String = ""
+    var taken: Bool = false
+    var date: Date = Date()
+
+    init(medicineStableId: String, dayKey: String, taken: Bool) {
+        self.medicineStableId = medicineStableId
+        self.dayKey = dayKey
+        self.taken = taken
+        self.date = Date()
+    }
+}
+
 // MARK: - Date Helpers
 
 extension Date {
