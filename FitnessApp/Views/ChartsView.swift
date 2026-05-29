@@ -29,6 +29,7 @@ struct ChartsView: View {
     @Query private var allSports: [SportEntry]
     @Query private var allTargetHistory: [TargetHistory]
     @Query private var allProfiles: [UserProfile]
+    @Query private var allWaterEntries: [WaterEntry]
 
     @State private var period: ChartPeriod = .week
 
@@ -55,6 +56,11 @@ struct ChartsView: View {
     private func sportKcal(for date: Date) -> Double {
         let key = date.dateKey
         return allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
+    }
+
+    private func water(for date: Date) -> Double {
+        let key = date.dateKey
+        return allWaterEntries.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.liters }
     }
 
     /// Target in vigore per una data (non retroattivo).
@@ -364,6 +370,62 @@ struct ChartsView: View {
                                     .font(.system(size: 24, weight: .bold, design: .rounded)).foregroundColor(.gymBlue)
                                 let avg = stepsData.isEmpty ? 0 : stepsData.map(\.steps).reduce(0, +) / stepsData.count
                                 Text("media \(avg.stepsFormatted)").font(.system(size: 14)).foregroundColor(.muted)
+                            }
+                        }
+                    }
+
+                    // ACQUA
+                    let waterData = dates.map { (date: $0, liters: water(for: $0)) }
+                    let daysWithWater = waterData.filter { $0.liters > 0 }
+                    let avgWater = daysWithWater.isEmpty ? 0.0 : daysWithWater.map { $0.liters }.reduce(0, +) / Double(daysWithWater.count)
+                    let waterTarget = allLimits.first?.waterTarget ?? 2.0
+                    if !daysWithWater.isEmpty {
+                        ChartCard(title: "Acqua") {
+                            Chart {
+                                ForEach(waterData, id: \.date) { item in
+                                    BarMark(x: .value("Data", item.date, unit: .day), y: .value("L", item.liters))
+                                        .foregroundStyle(Color(hex: "5AC8FA").opacity(item.liters >= waterTarget ? 1.0 : 0.55))
+                                        .cornerRadius(6)
+                                }
+                                if avgWater > 0 {
+                                    RuleMark(y: .value("Media", avgWater))
+                                        .foregroundStyle(Color(hex: "5AC8FA").opacity(0.8))
+                                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                                        .annotation(position: .top, alignment: .leading) {
+                                            Text(String(format: "media %.1f L", avgWater))
+                                                .font(.system(size: 9, weight: .semibold))
+                                                .foregroundColor(Color(hex: "5AC8FA"))
+                                        }
+                                }
+                            }
+                            .chartXAxis {
+                                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                                    AxisValueLabel(format: .dateTime.day().month(.abbreviated), centered: true)
+                                        .foregroundStyle(Color.muted).font(.system(size: 10))
+                                }
+                            }
+                            .chartYAxis {
+                                AxisMarks { v in
+                                    AxisValueLabel { if let d = v.as(Double.self) { Text(String(format: "%.1fL", d)).font(.system(size: 9)).foregroundStyle(Color.muted) } }
+                                    AxisGridLine().foregroundStyle(Color.brd)
+                                }
+                            }
+                            .frame(height: 140)
+                        } bigValue: {
+                            if let today = waterData.last {
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text(String(format: "%.1f L", today.liters))
+                                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                                        .foregroundColor(Color(hex: "5AC8FA"))
+                                    Text(String(format: "target %.1f L", waterTarget))
+                                        .font(.system(size: 14)).foregroundColor(.muted)
+                                    if avgWater > 0 {
+                                        Spacer()
+                                        Text(String(format: "media %.1f L", avgWater))
+                                            .font(.system(size: 13))
+                                            .foregroundColor(Color(hex: "5AC8FA"))
+                                    }
+                                }
                             }
                         }
                     }

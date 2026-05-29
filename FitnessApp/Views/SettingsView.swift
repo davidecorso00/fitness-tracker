@@ -117,6 +117,9 @@ struct SettingsView: View {
                                 LimitRow(label: "Passi giornalieri", value: Double(lim.stepsTarget), unit: "") {
                                     editing = LimitField(label: "Passi", unit: "", current: Double(lim.stepsTarget), isInt: true) { lim.stepsTarget = Int($0); save() }
                                 }
+                                LimitRow(label: "Acqua", value: lim.waterTarget, unit: "L") {
+                                    editing = LimitField(label: "Acqua", unit: "L", current: lim.waterTarget) { lim.waterTarget = $0; save() }
+                                }
                                 LimitRow(label: "Target peso", value: lim.weightTarget, unit: "kg", last: true) {
                                     editing = LimitField(label: "Target peso", unit: "kg", current: lim.weightTarget) { lim.weightTarget = $0; save() }
                                 }
@@ -204,7 +207,11 @@ struct LimitRow: View {
     let label: String; let value: Double; let unit: String
     var last: Bool = false; let onTap: () -> Void
     var displayValue: String {
-        unit == "" ? "\(Int(value))" : "\(Int(value)) \(unit)"
+        if unit == "" { return "\(Int(value))" }
+        let numStr = value.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(value))"
+            : value.formatted1
+        return "\(numStr) \(unit)"
     }
     var body: some View {
         Button(action: onTap) {

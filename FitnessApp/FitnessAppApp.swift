@@ -10,7 +10,8 @@ struct FitnessAppApp: App {
         let schema = Schema([
             FoodItem.self, FoodEntry.self, DayLog.self,
             AppLimits.self, SportEntry.self,
-            UserProfile.self, TargetHistory.self
+            UserProfile.self, TargetHistory.self,
+            WaterEntry.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

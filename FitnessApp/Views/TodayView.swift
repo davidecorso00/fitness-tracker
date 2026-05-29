@@ -237,6 +237,9 @@ struct TodayView: View {
                             }
                         }
 
+                        // Acqua
+                        WaterCard(dateKey: currentKey, target: limits?.waterTarget ?? 2.0)
+
                         // Palestra
                         if let log = dayLog {
                             HTCard {
@@ -323,6 +326,129 @@ struct TodayView: View {
 
     private func hapticSuccess() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+}
+
+// MARK: - Water Card
+
+private let waterBlue = Color(hex: "5AC8FA")
+
+struct WaterCard: View {
+    @Environment(\.modelContext) private var context
+    let dateKey: String
+    let target: Double
+
+    @Query private var allWater: [WaterEntry]
+
+    private var todayWater: [WaterEntry] {
+        allWater.filter { $0.dayKey == dateKey }.sorted { $0.date < $1.date }
+    }
+    private var total: Double { todayWater.reduce(0) { $0 + $1.liters } }
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
+    private func label(for liters: Double) -> String {
+        switch liters {
+        case 0.2: return "Bicchiere"
+        case 0.5: return "Bottiglietta"
+        case 1.5: return "Bottiglia"
+        default:  return String(format: "%.1f L", liters)
+        }
+    }
+
+    var body: some View {
+        HTCard {
+            VStack(alignment: .leading, spacing: 10) {
+                // Header row
+                HStack {
+                    SectionLabel(text: "Acqua")
+                    Spacer()
+                    Text(String(format: "%.1f / %.1f L", total, target))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(total >= target ? waterBlue : .muted)
+                }
+
+                // Progress bar
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08)).frame(height: 6)
+                        Capsule()
+                            .fill(waterBlue)
+                            .frame(width: geo.size.width * min(total / max(target, 0.01), 1), height: 6)
+                    }
+                }
+                .frame(height: 6)
+
+                // Drink buttons
+                HStack(spacing: 8) {
+                    WaterBtn(icon: "mug.fill",       label: "Bicchiere",   sub: "0.2 L") { add(0.2) }
+                    WaterBtn(icon: "waterbottle.fill", label: "Bottiglietta", sub: "0.5 L") { add(0.5) }
+                    WaterBtn(icon: "drop.fill",      label: "Bottiglia",   sub: "1.5 L") { add(1.5) }
+                }
+
+                // Entries list (most recent first)
+                if !todayWater.isEmpty {
+                    Rectangle().fill(Color.brd).frame(height: 0.5).padding(.top, 2)
+                    ForEach(todayWater.reversed()) { entry in
+                        HStack(spacing: 8) {
+                            Text(WaterCard.timeFmt.string(from: entry.date))
+                                .font(.system(size: 11)).foregroundColor(.muted)
+                                .frame(width: 36, alignment: .leading)
+                            Text(label(for: entry.liters))
+                                .font(.system(size: 13, weight: .semibold)).foregroundColor(.txt)
+                            Text("·  \(String(format: "%.1f L", entry.liters))")
+                                .font(.system(size: 12)).foregroundColor(.muted)
+                            Spacer()
+                            Button {
+                                context.delete(entry); try? context.save()
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold)).foregroundColor(.muted)
+                                    .frame(width: 22, height: 22)
+                                    .background(Color.card2, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func add(_ liters: Double) {
+        context.insert(WaterEntry(dayKey: dateKey, liters: liters))
+        try? context.save()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+struct WaterBtn: View {
+    let icon: String
+    let label: String
+    let sub: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(waterBlue)
+                Text(label)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.txt)
+                Text(sub)
+                    .font(.system(size: 9))
+                    .foregroundColor(.muted)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 

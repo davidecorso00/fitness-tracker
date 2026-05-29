@@ -33,16 +33,19 @@ struct RootView: View {
             Tab("Sommario", systemImage: "heart.fill", value: 0) {
                 TodayView(showSettings: $showSettings)
             }
-            Tab("Diario", systemImage: "list.bullet", value: 1) {
-                DiaryView(showSettings: $showSettings)
+            Tab("Cibo", systemImage: "fork.knife", value: 1) {
+                CiboView(showSettings: $showSettings)
             }
-            Tab("Alimenti", systemImage: "fork.knife", value: 2) {
-                FoodsView(showSettings: $showSettings)
+            Tab("Farmacia", systemImage: "cross.case.fill", value: 2) {
+                FarmaciaView(showSettings: $showSettings)
             }
-            Tab("Grafici", systemImage: "chart.xyaxis.line", value: 3) {
+            Tab("Palestra", systemImage: "dumbbell.fill", value: 3) {
+                PalestraView(showSettings: $showSettings)
+            }
+            Tab("Grafici", systemImage: "chart.xyaxis.line", value: 4) {
                 ChartsView(showSettings: $showSettings)
             }
-            Tab("Risultati", systemImage: "trophy.fill", value: 4) {
+            Tab("Risultati", systemImage: "trophy.fill", value: 5) {
                 ResultsView(showSettings: $showSettings)
             }
         }
@@ -56,14 +59,16 @@ struct RootView: View {
         TabView(selection: $selectedTab) {
             TodayView(showSettings: $showSettings)
                 .tabItem { Label("Sommario", systemImage: "heart.fill") }.tag(0)
-            DiaryView(showSettings: $showSettings)
-                .tabItem { Label("Diario", systemImage: "list.bullet") }.tag(1)
-            FoodsView(showSettings: $showSettings)
-                .tabItem { Label("Alimenti", systemImage: "fork.knife") }.tag(2)
+            CiboView(showSettings: $showSettings)
+                .tabItem { Label("Cibo", systemImage: "fork.knife") }.tag(1)
+            FarmaciaView(showSettings: $showSettings)
+                .tabItem { Label("Farmacia", systemImage: "cross.case.fill") }.tag(2)
+            PalestraView(showSettings: $showSettings)
+                .tabItem { Label("Palestra", systemImage: "dumbbell.fill") }.tag(3)
             ChartsView(showSettings: $showSettings)
-                .tabItem { Label("Grafici", systemImage: "chart.xyaxis.line") }.tag(3)
+                .tabItem { Label("Grafici", systemImage: "chart.xyaxis.line") }.tag(4)
             ResultsView(showSettings: $showSettings)
-                .tabItem { Label("Risultati", systemImage: "trophy.fill") }.tag(4)
+                .tabItem { Label("Risultati", systemImage: "trophy.fill") }.tag(5)
         }
         .tint(.ringRed)
     }

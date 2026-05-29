@@ -10,6 +10,7 @@ struct AddSheetItem: Identifiable {
 
 struct DiaryView: View {
     @Binding var showSettings: Bool
+    var embedded: Bool = false
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var appState: AppState
 
@@ -20,22 +21,24 @@ struct DiaryView: View {
         ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             VStack(spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Diario")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(.txt)
-                        Text(appState.currentDate.fullDisplay)
-                            .font(.system(size: 13, weight: .medium)).foregroundColor(.muted)
+                if !embedded {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Diario")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(.txt)
+                            Text(appState.currentDate.fullDisplay)
+                                .font(.system(size: 13, weight: .medium)).foregroundColor(.muted)
+                        }
+                        Spacer()
+                        HStack(spacing: 8) {
+                            NavBtn(icon: "chevron.left") { appState.goBack() }
+                            NavBtn(icon: "chevron.right", disabled: !appState.canGoForward) { appState.goForward() }
+                            GearBtn { showSettings = true }
+                        }
                     }
-                    Spacer()
-                    HStack(spacing: 8) {
-                        NavBtn(icon: "chevron.left") { appState.goBack() }
-                        NavBtn(icon: "chevron.right", disabled: !appState.canGoForward) { appState.goForward() }
-                        GearBtn { showSettings = true }
-                    }
+                    .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
                 }
-                .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
 
                 List {
                     ForEach(MealType.allCases, id: \.self) { meal in

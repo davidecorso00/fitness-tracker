@@ -107,6 +107,20 @@ enum GymColor: String, Codable, CaseIterable {
     case green = "green"; case pink = "pink"
 }
 
+// MARK: - Water Entry
+
+@Model final class WaterEntry {
+    var dayKey: String = ""
+    var liters: Double = 0
+    var date: Date = Date()
+
+    init(dayKey: String, liters: Double) {
+        self.dayKey = dayKey
+        self.liters = liters
+        self.date = Date()
+    }
+}
+
 // MARK: - Sport Entry
 
 @Model final class SportEntry {
@@ -215,6 +229,7 @@ enum SportType: String, CaseIterable, Identifiable {
     var saltTarget: Double = 6
     var stepsTarget: Int = 10000
     var weightTarget: Double = 85
+    var waterTarget: Double = 2.0
     var startDate: Date = Date()
 
     init() {}

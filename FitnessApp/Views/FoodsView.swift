@@ -9,6 +9,7 @@ struct FoodEditItem: Identifiable {
 
 struct FoodsView: View {
     @Binding var showSettings: Bool
+    var embedded: Bool = false
     @Environment(\.modelContext) private var context
     @Query(sort: \FoodItem.name) private var foods: [FoodItem]
 
@@ -20,72 +21,101 @@ struct FoodsView: View {
     }
 
     var body: some View {
-        ZStack { Color.bg.ignoresSafeArea() }
-        .overlay(
-            VStack(spacing: 0) {
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Alimenti")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(.txt)
-                        Text("Database personale")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.muted)
-                    }
-                    Spacer()
-                    Button {
-                        sheetItem = FoodEditItem(food: nil)
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus").font(.system(size: 13, weight: .bold))
-                            Text("Nuovo").font(.system(size: 13, weight: .bold))
+        Group {
+            if embedded {
+                VStack(spacing: 0) {
+                    HStack {
+                        Image(systemName: "magnifyingglass").foregroundColor(.muted)
+                        TextField("Cerca alimento...", text: $search)
+                            .foregroundColor(.txt).tint(.acc2)
+                        Button {
+                            sheetItem = FoodEditItem(food: nil)
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(.acc)
                         }
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(Color.acc, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    GearBtn { showSettings = true }
-                }
-                .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
+                    .padding(12)
+                    .background(Color.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 8)
 
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundColor(.muted)
-                    TextField("Cerca alimento...", text: $search)
-                        .foregroundColor(.txt).tint(.acc2)
+                    foodList
                 }
-                .padding(12)
-                .background(Color.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.horizontal, 20).padding(.bottom, 8)
+            } else {
+                ZStack { Color.bg.ignoresSafeArea() }
+                .overlay(
+                    VStack(spacing: 0) {
+                        HStack(alignment: .bottom) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Alimenti")
+                                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                                    .foregroundColor(.txt)
+                                Text("Database personale")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.muted)
+                            }
+                            Spacer()
+                            Button {
+                                sheetItem = FoodEditItem(food: nil)
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "plus").font(.system(size: 13, weight: .bold))
+                                    Text("Nuovo").font(.system(size: 13, weight: .bold))
+                                }
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 14).padding(.vertical, 9)
+                                .background(Color.acc, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            GearBtn { showSettings = true }
+                        }
+                        .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
 
-                List {
-                    ForEach(filtered) { food in
-                        FoodRow(food: food)
-                            .onTapGesture { sheetItem = FoodEditItem(food: food) }
-                            .listRowBackground(Color.white.opacity(0.03))
-                            .listRowSeparatorTint(Color.white.opacity(0.04))
-                            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    context.delete(food); try? context.save()
-                                } label: { Label("Elimina", systemImage: "trash") }
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                Button {
-                                    sheetItem = FoodEditItem(food: food)
-                                } label: { Label("Modifica", systemImage: "pencil") }
-                                .tint(.acc)
-                            }
+                        HStack {
+                            Image(systemName: "magnifyingglass").foregroundColor(.muted)
+                            TextField("Cerca alimento...", text: $search)
+                                .foregroundColor(.txt).tint(.acc2)
+                        }
+                        .padding(12)
+                        .background(Color.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(.horizontal, 20).padding(.bottom, 8)
+
+                        foodList
                     }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
+                )
             }
-        )
+        }
         .sheet(item: $sheetItem) { item in
             FoodFormSheet(food: item.food)
         }
+    }
+
+    private var foodList: some View {
+        List {
+            ForEach(filtered) { food in
+                FoodRow(food: food)
+                    .onTapGesture { sheetItem = FoodEditItem(food: food) }
+                    .listRowBackground(Color.white.opacity(0.03))
+                    .listRowSeparatorTint(Color.white.opacity(0.04))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            context.delete(food); try? context.save()
+                        } label: { Label("Elimina", systemImage: "trash") }
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button {
+                            sheetItem = FoodEditItem(food: food)
+                        } label: { Label("Modifica", systemImage: "pencil") }
+                        .tint(.acc)
+                    }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
     }
 }
 
