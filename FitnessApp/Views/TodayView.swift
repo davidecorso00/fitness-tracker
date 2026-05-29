@@ -199,18 +199,26 @@ struct TodayView: View {
                             }
                         }
 
-                        // Peso + Passi (sola lettura)
-                        HStack(spacing: 10) {
+                        // Peso + Passi — uno sopra l'altro, full width
+                        VStack(spacing: 10) {
+                            // Peso: label in alto, poi input e bottone affiancati stessa altezza
                             HTCard {
                                 VStack(alignment: .leading, spacing: 8) {
                                     SectionLabel(text: "Peso kg")
-                                    BigInputField(placeholder: "0.0", value: $weightInput, color: .txt, fontSize: 22)
-                                    PillButton(label: "Salva", color: .acc, textColor: .black) {
-                                        saveWeight()
+                                    HStack(alignment: .top, spacing: 12) {
+                                        BigInputField(placeholder: "0.0", value: $weightInput, color: .txt, fontSize: 22)
+                                        Button { saveWeight() } label: {
+                                            Text("Salva")
+                                                .font(.system(size: 17, weight: .bold))
+                                                .foregroundColor(.black)
+                                                .frame(maxHeight: .infinity)
+                                                .padding(.horizontal, 26)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .background(Color.acc, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     }
                                 }
                             }
-                            .frame(maxWidth: .infinity)
 
                             if let lim = limits {
                                 let log = dayLog ?? placeholderLog
@@ -233,38 +241,39 @@ struct TodayView: View {
                                             .font(.system(size: 10, weight: .semibold)).foregroundColor(.muted)
                                     }
                                 }
-                                .frame(maxWidth: .infinity)
                             }
                         }
 
                         // Acqua
                         WaterCard(dateKey: currentKey, target: limits?.waterTarget ?? 2.0)
 
-                        // Palestra
+                        // Palestra — dots distribuiti su tutta la riga
                         if let log = dayLog {
                             HTCard {
                                 VStack(alignment: .leading, spacing: 10) {
                                     SectionLabel(text: "Palestra oggi")
                                     if #available(iOS 26.0, *) {
                                         GlassEffectContainer {
-                                            HStack(spacing: 10) {
+                                            HStack(spacing: 0) {
                                                 ForEach(GymColor.allCases, id: \.self) { gc in
                                                     GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
                                                         log.gymColor = gc
                                                         try? context.save()
                                                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                     }
+                                                    .frame(maxWidth: .infinity)
                                                 }
                                             }
                                         }
                                     } else {
-                                        HStack(spacing: 10) {
+                                        HStack(spacing: 0) {
                                             ForEach(GymColor.allCases, id: \.self) { gc in
                                                 GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
                                                     log.gymColor = gc
                                                     try? context.save()
                                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                 }
+                                                .frame(maxWidth: .infinity)
                                             }
                                         }
                                     }
@@ -370,22 +379,22 @@ struct WaterCard: View {
                         .foregroundColor(total >= target ? waterBlue : .muted)
                 }
 
-                // Progress bar
+                // Progress bar — piena larghezza
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.08)).frame(height: 6)
+                        Capsule().fill(Color.white.opacity(0.08)).frame(height: 12)
                         Capsule()
                             .fill(waterBlue)
-                            .frame(width: geo.size.width * min(total / max(target, 0.01), 1), height: 6)
+                            .frame(width: geo.size.width * min(total / max(target, 0.01), 1), height: 12)
                     }
                 }
-                .frame(height: 6)
+                .frame(height: 12)
 
                 // Drink buttons
                 HStack(spacing: 8) {
-                    WaterBtn(icon: "mug.fill",       label: "Bicchiere",   sub: "0.2 L") { add(0.2) }
+                    WaterBtn(icon: "mug.fill",        label: "Bicchiere",    sub: "0.2 L") { add(0.2) }
                     WaterBtn(icon: "waterbottle.fill", label: "Bottiglietta", sub: "0.5 L") { add(0.5) }
-                    WaterBtn(icon: "drop.fill",      label: "Bottiglia",   sub: "1.5 L") { add(1.5) }
+                    WaterBtn(icon: "drop.fill",        label: "Bottiglia",    sub: "1.5 L") { add(1.5) }
                 }
 
                 // Entries list (most recent first)
