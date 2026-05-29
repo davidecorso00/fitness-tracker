@@ -4,13 +4,15 @@ import SwiftData
 // MARK: - Codable structs per export/import
 
 struct BackupData: Codable {
-    var version: Int = 1
+    var version: Int = 2
     var exportDate: Date = Date()
     var foods: [FoodBackup]
     var entries: [EntryBackup]
     var logs: [LogBackup]
     var limits: LimitsBackup?
     var sports: [SportBackup]?
+    var userProfile: UserProfileBackup?
+    var targetHistory: [TargetHistoryBackup]?
 }
 
 struct FoodBackup: Codable {
@@ -29,6 +31,7 @@ struct EntryBackup: Codable {
 
 struct LogBackup: Codable {
     var dateKey: String; var weight: Double?; var steps: Int; var gymColor: String
+    var basalCaloriesBurned: Double?  // opzionale per compatibilità backup precedenti
 }
 
 struct LimitsBackup: Codable {
@@ -42,6 +45,20 @@ struct SportBackup: Codable {
     var dayKey: String; var sportName: String; var durationMinutes: Int; var kcalBurned: Double
 }
 
+struct UserProfileBackup: Codable {
+    var heightCm: Double?
+    var birthDate: Date?
+    var sex: String
+}
+
+struct TargetHistoryBackup: Codable {
+    var effectiveDate: Date
+    var kcalTarget: Double; var proteinTarget: Double; var carbsTarget: Double
+    var fatTarget: Double; var fiberTarget: Double; var sugarTarget: Double
+    var saturatedFatTarget: Double; var saltTarget: Double
+    var stepsTarget: Int; var weightTarget: Double
+}
+
 // MARK: - Backup Manager
 
 @MainActor
@@ -53,6 +70,10 @@ final class BackupManager {
         let logs    = (try? context.fetch(FetchDescriptor<DayLog>())) ?? []
         let limits  = (try? context.fetch(FetchDescriptor<AppLimits>()))?.first
         let sports  = (try? context.fetch(FetchDescriptor<SportEntry>())) ?? []
+        let profile = (try? context.fetch(FetchDescriptor<UserProfile>()))?.first
+        let history = (try? context.fetch(FetchDescriptor<TargetHistory>(
+            sortBy: [SortDescriptor(\.effectiveDate)]
+        ))) ?? []
 
         let backup = BackupData(
             foods: foods.map {
@@ -69,7 +90,9 @@ final class BackupManager {
                     saturatedFat: $0.saturatedFatSnapshot, salt: $0.saltSnapshot)
             },
             logs: logs.map {
-                LogBackup(dateKey: $0.dateKey, weight: $0.weight, steps: $0.steps, gymColor: $0.gymColor.rawValue)
+                LogBackup(dateKey: $0.dateKey, weight: $0.weight, steps: $0.steps,
+                    gymColor: $0.gymColor.rawValue,
+                    basalCaloriesBurned: $0.basalCaloriesBurned > 0 ? $0.basalCaloriesBurned : nil)
             },
             limits: limits.map {
                 LimitsBackup(kcalTarget: $0.kcalTarget, proteinTarget: $0.proteinTarget,
@@ -81,6 +104,17 @@ final class BackupManager {
             sports: sports.map {
                 SportBackup(dayKey: $0.dayKey, sportName: $0.sportName,
                     durationMinutes: $0.durationMinutes, kcalBurned: $0.kcalBurned)
+            },
+            userProfile: profile.map {
+                UserProfileBackup(heightCm: $0.heightCm, birthDate: $0.birthDate, sex: $0.sex.rawValue)
+            },
+            targetHistory: history.map {
+                TargetHistoryBackup(effectiveDate: $0.effectiveDate,
+                    kcalTarget: $0.kcalTarget, proteinTarget: $0.proteinTarget,
+                    carbsTarget: $0.carbsTarget, fatTarget: $0.fatTarget,
+                    fiberTarget: $0.fiberTarget, sugarTarget: $0.sugarTarget,
+                    saturatedFatTarget: $0.saturatedFatTarget, saltTarget: $0.saltTarget,
+                    stepsTarget: $0.stepsTarget, weightTarget: $0.weightTarget)
             }
         )
 
@@ -95,14 +129,14 @@ final class BackupManager {
         decoder.dateDecodingStrategy = .iso8601
         let backup = try decoder.decode(BackupData.self, from: data)
 
-        // Cancella tutto
         try context.delete(model: FoodItem.self)
         try context.delete(model: FoodEntry.self)
         try context.delete(model: DayLog.self)
         try context.delete(model: AppLimits.self)
         try context.delete(model: SportEntry.self)
+        try context.delete(model: UserProfile.self)
+        try context.delete(model: TargetHistory.self)
 
-        // Ripristina foods
         for f in backup.foods {
             context.insert(FoodItem(name: f.name, kcalPer100g: f.kcal, proteinPer100g: f.protein,
                 carbsPer100g: f.carbs, fatPer100g: f.fat, fiberPer100g: f.fiber,
@@ -110,36 +144,27 @@ final class BackupManager {
                 portionName: f.portionName, portionGrams: f.portionGrams))
         }
 
-        // Ripristina entries
         for e in backup.entries {
             let meal = MealType(rawValue: e.meal) ?? .snack
-            // Creiamo l'entry direttamente e impostiamo gli snapshot salvati
-            // NON usiamo FoodEntry(food:grams:) perché ricalcolerebbe i valori
             let dummyFood = FoodItem(name: e.foodName, kcalPer100g: 0, proteinPer100g: 0,
                 carbsPer100g: 0, fatPer100g: 0)
             let entry = FoodEntry(food: dummyFood, grams: e.grams, meal: meal, date: e.date)
-            // Sovrascriviamo con i valori originali dal backup
-            entry.kcalSnapshot = e.kcal
-            entry.proteinSnapshot = e.protein
-            entry.carbsSnapshot = e.carbs
-            entry.fatSnapshot = e.fat
-            entry.fiberSnapshot = e.fiber
-            entry.sugarSnapshot = e.sugar
-            entry.saturatedFatSnapshot = e.saturatedFat
-            entry.saltSnapshot = e.salt
+            entry.kcalSnapshot = e.kcal; entry.proteinSnapshot = e.protein
+            entry.carbsSnapshot = e.carbs; entry.fatSnapshot = e.fat
+            entry.fiberSnapshot = e.fiber; entry.sugarSnapshot = e.sugar
+            entry.saturatedFatSnapshot = e.saturatedFat; entry.saltSnapshot = e.salt
             context.insert(entry)
         }
 
-        // Ripristina logs
         for l in backup.logs {
             let log = DayLog(dateKey: l.dateKey)
-            log.weight = l.weight
-            log.steps = l.steps
+            log.weight   = l.weight
+            log.steps    = l.steps
             log.gymColor = GymColor(rawValue: l.gymColor) ?? .rest
+            log.basalCaloriesBurned = l.basalCaloriesBurned ?? 0
             context.insert(log)
         }
 
-        // Ripristina limiti
         if let l = backup.limits {
             let lim = AppLimits()
             lim.kcalTarget = l.kcalTarget; lim.proteinTarget = l.proteinTarget
@@ -151,10 +176,33 @@ final class BackupManager {
             context.insert(lim)
         }
 
-        // Ripristina sport
         for s in backup.sports ?? [] {
             context.insert(SportEntry(dayKey: s.dayKey, sportName: s.sportName,
                 durationMinutes: s.durationMinutes, kcalBurned: s.kcalBurned))
+        }
+
+        if let p = backup.userProfile {
+            let prof = UserProfile()
+            prof.heightCm  = p.heightCm
+            prof.birthDate = p.birthDate
+            prof.sex       = Sex(rawValue: p.sex) ?? .notSpecified
+            context.insert(prof)
+        }
+
+        for t in backup.targetHistory ?? [] {
+            let hist = TargetHistory()
+            hist.effectiveDate      = t.effectiveDate
+            hist.kcalTarget         = t.kcalTarget
+            hist.proteinTarget      = t.proteinTarget
+            hist.carbsTarget        = t.carbsTarget
+            hist.fatTarget          = t.fatTarget
+            hist.fiberTarget        = t.fiberTarget
+            hist.sugarTarget        = t.sugarTarget
+            hist.saturatedFatTarget = t.saturatedFatTarget
+            hist.saltTarget         = t.saltTarget
+            hist.stepsTarget        = t.stepsTarget
+            hist.weightTarget       = t.weightTarget
+            context.insert(hist)
         }
 
         try context.save()
@@ -175,16 +223,13 @@ struct BackupView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            // Export
             HTCard {
                 VStack(alignment: .leading, spacing: 12) {
                     SectionLabel(text: "Esporta backup")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Salva tutti i tuoi dati (alimenti, diario, peso, impostazioni) in un file JSON. Tienilo al sicuro prima di aggiornamenti importanti.")
                         .font(.system(size: 13)).foregroundColor(.muted)
-                    Button {
-                        doExport()
-                    } label: {
+                    Button { doExport() } label: {
                         HStack {
                             Image(systemName: "square.and.arrow.up")
                             Text("Esporta dati")
@@ -197,16 +242,13 @@ struct BackupView: View {
                 }
             }
 
-            // Import
             HTCard {
                 VStack(alignment: .leading, spacing: 12) {
                     SectionLabel(text: "Importa backup")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Ripristina i dati da un file JSON precedentemente esportato. Attenzione: i dati attuali verranno sostituiti.")
                         .font(.system(size: 13)).foregroundColor(.muted)
-                    Button {
-                        showImporter = true
-                    } label: {
+                    Button { showImporter = true } label: {
                         HStack {
                             Image(systemName: "square.and.arrow.down")
                             Text("Importa dati")
@@ -250,15 +292,11 @@ struct BackupView: View {
         .confirmationDialog("Sostituire i dati attuali con il backup?",
             isPresented: $showRestoreConfirm, titleVisibility: .visible) {
             Button("Ripristina", role: .destructive) {
-                if let data = pendingRestoreData {
-                    doRestore(data)
-                }
+                if let data = pendingRestoreData { doRestore(data) }
             }
             Button("Annulla", role: .cancel) {}
         }
-        .alert(alertMsg, isPresented: $showAlert) {
-            Button("OK") {}
-        }
+        .alert(alertMsg, isPresented: $showAlert) { Button("OK") {} }
     }
 
     private func doExport() {
@@ -282,7 +320,7 @@ struct BackupView: View {
     }
 }
 
-// MARK: - FileDocument per export
+// MARK: - FileDocument
 
 import UniformTypeIdentifiers
 

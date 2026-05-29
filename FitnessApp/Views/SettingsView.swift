@@ -7,7 +7,17 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var limits: AppLimits?
+    @State private var profile: UserProfile?
+    @State private var todayLog: DayLog?
     @State private var editing: LimitField?
+
+    @Query(sort: \DayLog.dateKey, order: .reverse) private var allLogs: [DayLog]
+
+    /// Peso più recente inserito in qualsiasi giorno fino ad oggi.
+    private var lastKnownWeight: Double? {
+        let todayKey = Date().dateKey
+        return allLogs.first { $0.dateKey <= todayKey && $0.weight != nil }?.weight
+    }
 
     var body: some View {
         NavigationStack {
@@ -15,6 +25,65 @@ struct SettingsView: View {
             .overlay(
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 14) {
+                        // ── Profilo utente ──────────────────────────────────
+                        if let prof = profile {
+                            LimitGroup(title: "Profilo") {
+                                // Peso: legge il peso di oggi o l'ultimo registrato
+                                let weightValue = todayLog?.weight ?? lastKnownWeight ?? 0
+                                LimitRow(label: "Peso attuale", value: weightValue, unit: "kg") {
+                                    editing = LimitField(label: "Peso attuale", unit: "kg", current: weightValue) { val in
+                                        let log = appState.dayLog(for: Date().dateKey, context: context)
+                                        log.weight = val
+                                        try? context.save()
+                                        todayLog = log
+                                    }
+                                }
+                                LimitRow(label: "Altezza", value: prof.heightCm ?? 0, unit: "cm") {
+                                    editing = LimitField(label: "Altezza", unit: "cm", current: prof.heightCm ?? 0) {
+                                        prof.heightCm = $0; save()
+                                    }
+                                }
+                                // Sesso
+                                HStack {
+                                    Text("Sesso")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(Color(hex: "cccccc"))
+                                    Spacer()
+                                    Picker("", selection: Binding(
+                                        get: { prof.sex },
+                                        set: { prof.sex = $0; save() }
+                                    )) {
+                                        ForEach(Sex.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                                    }
+                                    .labelsHidden()
+                                    .tint(.acc2)
+                                }
+                                .padding(.horizontal, 18).padding(.vertical, 13)
+                                .overlay(alignment: .top) {
+                                    Rectangle().fill(Color.white.opacity(0.04)).frame(height: 0.5).padding(.leading, 18)
+                                }
+                                // Data di nascita
+                                HStack {
+                                    Text("Data di nascita")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(Color(hex: "cccccc"))
+                                    Spacer()
+                                    DatePicker("", selection: Binding(
+                                        get: { prof.birthDate ?? Calendar.current.date(byAdding: .year, value: -25, to: Date())! },
+                                        set: { prof.birthDate = $0; save() }
+                                    ), displayedComponents: .date)
+                                    .labelsHidden()
+                                    .colorScheme(.dark)
+                                    .tint(.acc2)
+                                }
+                                .padding(.horizontal, 18).padding(.vertical, 13)
+                                .overlay(alignment: .top) {
+                                    Rectangle().fill(Color.white.opacity(0.04)).frame(height: 0.5).padding(.leading, 18)
+                                }
+                            }
+                        }
+
+                        // ── Target nutrizionali ─────────────────────────────
                         if let lim = limits {
                             LimitGroup(title: "Macronutrienti") {
                                 LimitRow(label: "Calorie", value: lim.kcalTarget, unit: "kcal") {
@@ -40,7 +109,7 @@ struct SettingsView: View {
                                 LimitRow(label: "Fibre", value: lim.fiberTarget, unit: "g") {
                                     editing = LimitField(label: "Fibre", unit: "g", current: lim.fiberTarget) { lim.fiberTarget = $0; save() }
                                 }
-                            LimitRow(label: "Sale", value: lim.saltTarget, unit: "g", last: true) {
+                                LimitRow(label: "Sale", value: lim.saltTarget, unit: "g", last: true) {
                                     editing = LimitField(label: "Sale", unit: "g", current: lim.saltTarget) { lim.saltTarget = $0; save() }
                                 }
                             }
@@ -53,7 +122,6 @@ struct SettingsView: View {
                                 }
                             }
 
-                            // Backup
                             BackupView()
                                 .padding(.horizontal, -20)
                                 .padding(.top, 8)
@@ -96,11 +164,20 @@ struct SettingsView: View {
             }
         }
         .presentationBackground(Color.bg)
-        .onAppear { limits = appState.limits(context: context) }
+        .onAppear {
+            limits   = appState.limits(context: context)
+            profile  = appState.userProfile(context: context)
+            todayLog = appState.dayLog(for: Date().dateKey, context: context)
+        }
         .sheet(item: $editing) { LimitEditSheet(field: $0) }
     }
 
-    private func save() { try? context.save() }
+    private func save() {
+        try? context.save()
+        if let lim = limits {
+            appState.saveTargetHistory(from: lim, context: context)
+        }
+    }
 }
 
 // MARK: - Reusable limit components
@@ -127,7 +204,7 @@ struct LimitRow: View {
     let label: String; let value: Double; let unit: String
     var last: Bool = false; let onTap: () -> Void
     var displayValue: String {
-        unit == "" ? "\(Int(value))" : unit == "kcal" ? "\(Int(value)) \(unit)" : "\(Int(value)) \(unit)"
+        unit == "" ? "\(Int(value))" : "\(Int(value)) \(unit)"
     }
     var body: some View {
         Button(action: onTap) {

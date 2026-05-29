@@ -82,26 +82,22 @@ enum MealType: String, Codable, CaseIterable {
     var steps: Int = 0
     var gymColor: GymColor = GymColor.rest
     var activeCaloriesBurned: Double = 0
+    var basalCaloriesBurned: Double = 0  // mantenuto per compatibilità SwiftData, non più usato
 
     init(dateKey: String) {
         self.dateKey = dateKey
     }
 
+    /// Calorie bruciate da movimento (HealthKit activeEnergy) o stima da passi.
+    /// La quota BMR × 1.2 viene calcolata e aggiunta a livello superiore.
     var burnedKcal: Int {
         let gymBonus = gymColor == .rest ? 0 : 150
-
         if activeCaloriesBurned > 0 {
-            // Calorie reali da Apple Watch (o iPhone) via HealthKit
             return Int(activeCaloriesBurned) + gymBonus
         }
-
-        // Fallback: stima dai passi × 0.04 (nessun Watch collegato o permesso negato)
-        // In media una persona brucia ~0.04 kcal per passo (varia in base al peso)
         if steps > 0 {
             return Int(Double(steps) * 0.04) + gymBonus
         }
-
-        // Nessun dato disponibile
         return gymBonus
     }
 }
@@ -151,7 +147,6 @@ enum SportType: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// kcal stimate per ora (soggetto ~75 kg)
     var kcalPerHour: Double {
         switch self {
         case .running:       return 600
@@ -223,6 +218,70 @@ enum SportType: String, CaseIterable, Identifiable {
     var startDate: Date = Date()
 
     init() {}
+}
+
+// MARK: - User Profile
+
+enum Sex: String, Codable, CaseIterable {
+    case male         = "Maschio"
+    case female       = "Femmina"
+    case notSpecified = "Non specificato"
+}
+
+@Model final class UserProfile {
+    var heightCm: Double? = nil
+    var birthDate: Date? = nil
+    var sex: Sex = Sex.notSpecified
+
+    init() {}
+}
+
+// MARK: - BMR (Mifflin-St Jeor)
+
+func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -> Double {
+    guard weightKg > 0, heightCm > 0, ageYears > 0 else { return 0 }
+    switch sex {
+    case .male:
+        return (10 * weightKg) + (6.25 * heightCm) - (5 * Double(ageYears)) + 5
+    case .female:
+        return (10 * weightKg) + (6.25 * heightCm) - (5 * Double(ageYears)) - 161
+    case .notSpecified:
+        let m = (10 * weightKg) + (6.25 * heightCm) - (5 * Double(ageYears)) + 5
+        let f = (10 * weightKg) + (6.25 * heightCm) - (5 * Double(ageYears)) - 161
+        return (m + f) / 2.0
+    }
+}
+
+// MARK: - Target History
+
+@Model final class TargetHistory {
+    var effectiveDate: Date = Date()
+    var kcalTarget: Double = 2255
+    var proteinTarget: Double = 200
+    var carbsTarget: Double = 300
+    var fatTarget: Double = 70
+    var fiberTarget: Double = 30
+    var sugarTarget: Double = 50
+    var saturatedFatTarget: Double = 20
+    var saltTarget: Double = 6
+    var stepsTarget: Int = 10000
+    var weightTarget: Double = 85
+
+    init() {}
+
+    init(effectiveDate: Date, from limits: AppLimits) {
+        self.effectiveDate      = effectiveDate
+        self.kcalTarget         = limits.kcalTarget
+        self.proteinTarget      = limits.proteinTarget
+        self.carbsTarget        = limits.carbsTarget
+        self.fatTarget          = limits.fatTarget
+        self.fiberTarget        = limits.fiberTarget
+        self.sugarTarget        = limits.sugarTarget
+        self.saturatedFatTarget = limits.saturatedFatTarget
+        self.saltTarget         = limits.saltTarget
+        self.stepsTarget        = limits.stepsTarget
+        self.weightTarget       = limits.weightTarget
+    }
 }
 
 // MARK: - Date Helpers

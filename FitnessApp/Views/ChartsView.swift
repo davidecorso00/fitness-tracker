@@ -27,6 +27,8 @@ struct ChartsView: View {
     @Query private var allEntries: [FoodEntry]
     @Query private var allLimits: [AppLimits]
     @Query private var allSports: [SportEntry]
+    @Query private var allTargetHistory: [TargetHistory]
+    @Query private var allProfiles: [UserProfile]
 
     @State private var period: ChartPeriod = .week
 
@@ -55,10 +57,44 @@ struct ChartsView: View {
         return allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
     }
 
-    // Grasso perso/guadagnato cumulativo
-    // deficit kcal / 7700 = kg di grasso
-    // giorni senza dati (kcal == 0) vengono saltati
-    private func fatLossData(kcalTarget: Double) -> [(date: Date, kg: Double)] {
+    /// Target in vigore per una data (non retroattivo).
+    private func targets(for date: Date) -> TargetHistory? {
+        let dayStart = Calendar.current.startOfDay(for: date)
+        return allTargetHistory
+            .filter { Calendar.current.startOfDay(for: $0.effectiveDate) <= dayStart }
+            .max(by: { $0.effectiveDate < $1.effectiveDate })
+            ?? allTargetHistory.min(by: { $0.effectiveDate < $1.effectiveDate })
+    }
+
+    /// Peso più recente registrato nei DayLog entro la data indicata.
+    private func weight(for date: Date) -> Double? {
+        let key = date.dateKey
+        return allLogs
+            .filter { $0.dateKey <= key && $0.weight != nil }
+            .max(by: { $0.dateKey < $1.dateKey })?
+            .weight
+    }
+
+    /// Spesa energetica totale del giorno: BMR × 1.2 + calorie attive HealthKit + sport.
+    /// Se il profilo è incompleto ritorna solo le calorie attive.
+    private func totalDailyBurn(for date: Date) -> Double {
+        let log          = self.log(for: date)
+        let activityKcal = Double(log?.burnedKcal ?? 0) + sportKcal(for: date)
+
+        if let profile = allProfiles.first,
+           let heightCm = profile.heightCm,
+           let birthDate = profile.birthDate,
+           let w = weight(for: date), w > 0 {
+            let age = Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
+            let bmr = calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
+            return bmr + activityKcal
+        }
+
+        return activityKcal
+    }
+
+    /// Grasso perso/guadagnato cumulativo. Deficit = BMR×1.2 + attività − mangiato.
+    private func fatLossData() -> [(date: Date, kg: Double)] {
         let datesWithData = dates.filter { kcal(for: $0) > 0 || (log(for: $0)?.steps ?? 0) > 0 }
         guard !datesWithData.isEmpty else { return [] }
 
@@ -67,12 +103,10 @@ struct ChartsView: View {
 
         for date in dates {
             let eaten = kcal(for: date)
-            let burned = Double(log(for: date)?.burnedKcal ?? 0) + sportKcal(for: date)
-            if eaten == 0 && burned == 0 { continue }
-            // Usa il target attuale dalle impostazioni
-            let deficit = kcalTarget - eaten + burned
+            if eaten == 0 && (log(for: date)?.burnedKcal ?? 0) == 0 { continue }
+            let deficit  = totalDailyBurn(for: date) - eaten
             let kgChange = deficit / 7700.0
-            cumulative += kgChange
+            cumulative  += kgChange
             result.append((date, cumulative))
         }
         return result
@@ -95,27 +129,21 @@ struct ChartsView: View {
                     }
                     .padding(.horizontal, 20).padding(.top, 16)
 
-                    // Period selector
                     Picker("Periodo", selection: $period) {
-                        ForEach(ChartPeriod.allCases, id: \.self) { p in
-                            Text(p.rawValue).tag(p)
-                        }
+                        ForEach(ChartPeriod.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 20)
 
-                    // GRASSO PERSO — primo grafico, il più importante
-                    let kcalTarget = allLimits.first?.kcalTarget ?? 2255
-                    let fatData = fatLossData(kcalTarget: kcalTarget)
+                    // GRASSO PERSO
+                    let fatData = fatLossData()
                     if !fatData.isEmpty {
                         ChartCard(title: "Grasso perso (stima)") {
                             Chart(fatData, id: \.date) { item in
                                 AreaMark(x: .value("Data", item.date), y: .value("kg", item.kg))
-                                    .foregroundStyle(
-                                        item.kg >= 0
+                                    .foregroundStyle(item.kg >= 0
                                         ? Color.gymGreen.opacity(0.2).gradient
-                                        : Color.gymOrange.opacity(0.2).gradient
-                                    )
+                                        : Color.gymOrange.opacity(0.2).gradient)
                                     .interpolationMethod(.catmullRom)
                                 LineMark(x: .value("Data", item.date), y: .value("kg", item.kg))
                                     .foregroundStyle(item.kg >= 0 ? Color.gymGreen : Color.gymOrange)
@@ -144,11 +172,12 @@ struct ChartsView: View {
                         } bigValue: {
                             if let last = fatData.last {
                                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                    Text(last.kg >= 0 ? "-\(String(format: "%.2f", last.kg)) kg" : "+\(String(format: "%.2f", abs(last.kg))) kg")
+                                    Text(last.kg >= 0
+                                         ? "-\(String(format: "%.2f", last.kg)) kg"
+                                         : "+\(String(format: "%.2f", abs(last.kg))) kg")
                                         .font(.system(size: 24, weight: .bold, design: .rounded))
                                         .foregroundColor(last.kg >= 0 ? .gymGreen : .gymOrange)
-                                    Text("grasso cumulativo")
-                                        .font(.system(size: 13)).foregroundColor(.muted)
+                                    Text("grasso cumulativo").font(.system(size: 13)).foregroundColor(.muted)
                                 }
                             }
                         }
@@ -165,8 +194,7 @@ struct ChartsView: View {
                                 LineMark(x: .value("Data", date), y: .value("kg", w))
                                     .foregroundStyle(Color.gymGreen).interpolationMethod(.catmullRom)
                                 AreaMark(x: .value("Data", date), y: .value("kg", w))
-                                    .foregroundStyle(Color.gymGreen.opacity(0.15).gradient)
-                                    .interpolationMethod(.catmullRom)
+                                    .foregroundStyle(Color.gymGreen.opacity(0.15).gradient).interpolationMethod(.catmullRom)
                                 PointMark(x: .value("Data", date), y: .value("kg", w))
                                     .foregroundStyle(Color.gymGreen).symbolSize(30)
                             }
@@ -199,13 +227,29 @@ struct ChartsView: View {
                         }
                     }
 
-                    // CALORIE
+                    // CALORIE (con media giornaliera)
                     let kcalData = dates.map { (date: $0, kcal: kcal(for: $0)) }
+                    let todayKcalTarget = targets(for: Date())?.kcalTarget ?? allLimits.first?.kcalTarget ?? 2255
+                    let daysWithKcal = kcalData.filter { $0.kcal > 0 }
+                    let avgKcal = daysWithKcal.isEmpty ? 0.0 : daysWithKcal.map { $0.kcal }.reduce(0, +) / Double(daysWithKcal.count)
                     ChartCard(title: "Calorie") {
-                        Chart(kcalData, id: \.date) { item in
-                            BarMark(x: .value("Data", item.date, unit: .day), y: .value("kcal", item.kcal))
-                                .foregroundStyle(item.kcal > kcalTarget ? Color.gymOrange : Color.ringRed)
-                                .cornerRadius(6)
+                        Chart {
+                            ForEach(kcalData, id: \.date) { item in
+                                let dayTarget = targets(for: item.date)?.kcalTarget ?? allLimits.first?.kcalTarget ?? 2255
+                                BarMark(x: .value("Data", item.date, unit: .day), y: .value("kcal", item.kcal))
+                                    .foregroundStyle(item.kcal > dayTarget ? Color.gymOrange : Color.ringRed)
+                                    .cornerRadius(6)
+                            }
+                            if avgKcal > 0 {
+                                RuleMark(y: .value("Media", avgKcal))
+                                    .foregroundStyle(Color.gymOrange.opacity(0.7))
+                                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                                    .annotation(position: .top, alignment: .leading) {
+                                        Text("media \(Int(avgKcal))")
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .foregroundColor(.gymOrange)
+                                    }
+                            }
                         }
                         .chartXAxis {
                             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
@@ -225,8 +269,12 @@ struct ChartsView: View {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
                                 Text("\(Int(today.kcal))")
                                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                                    .foregroundColor(today.kcal > (allLimits.first?.kcalTarget ?? 2255) ? .gymOrange : .txt)
-                                Text("/ \(Int(allLimits.first?.kcalTarget ?? 2255)) kcal").font(.system(size: 14)).foregroundColor(.muted)
+                                    .foregroundColor(today.kcal > todayKcalTarget ? .gymOrange : .txt)
+                                Text("/ \(Int(todayKcalTarget)) kcal").font(.system(size: 14)).foregroundColor(.muted)
+                                if avgKcal > 0 {
+                                    Spacer()
+                                    Text("media \(Int(avgKcal))").font(.system(size: 13)).foregroundColor(.gymOrange)
+                                }
                             }
                         }
                     }
@@ -254,13 +302,14 @@ struct ChartsView: View {
 
                     // PROTEINE
                     let protData = dates.map { (date: $0, p: protein(for: $0)) }
+                    let todayProtTarget = targets(for: Date())?.proteinTarget ?? allLimits.first?.proteinTarget ?? 200
                     ChartCard(title: "Proteine") {
                         Chart(protData, id: \.date) { item in
                             LineMark(x: .value("Data", item.date), y: .value("g", item.p))
                                 .foregroundStyle(Color.ringGreen).interpolationMethod(.catmullRom)
                             AreaMark(x: .value("Data", item.date), y: .value("g", item.p))
                                 .foregroundStyle(Color.ringGreen.opacity(0.15).gradient).interpolationMethod(.catmullRom)
-                            RuleMark(y: .value("Target", allLimits.first?.proteinTarget ?? 200))
+                            RuleMark(y: .value("Target", todayProtTarget))
                                 .foregroundStyle(Color.ringGreen.opacity(0.4))
                                 .lineStyle(StrokeStyle(dash: [4, 4]))
                         }
@@ -281,17 +330,18 @@ struct ChartsView: View {
                         if let today = protData.last {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
                                 Text("\(Int(today.p))g").font(.system(size: 24, weight: .bold, design: .rounded)).foregroundColor(.acc2)
-                                Text("target \(Int(allLimits.first?.proteinTarget ?? 200))g").font(.system(size: 14)).foregroundColor(.muted)
+                                Text("target \(Int(todayProtTarget))g").font(.system(size: 14)).foregroundColor(.muted)
                             }
                         }
                     }
 
-                    // PASSI
+                    // PASSI (opacità basata su target del giorno)
                     let stepsData = dates.map { (date: $0, steps: log(for: $0)?.steps ?? 0) }
                     ChartCard(title: "Passi") {
                         Chart(stepsData, id: \.date) { item in
+                            let dayStepsTarget = targets(for: item.date)?.stepsTarget ?? allLimits.first?.stepsTarget ?? 10000
                             BarMark(x: .value("Data", item.date, unit: .day), y: .value("Passi", item.steps))
-                                .foregroundStyle(Color.ringBlue.opacity(item.steps >= (allLimits.first?.stepsTarget ?? 10000) ? 1.0 : 0.65))
+                                .foregroundStyle(Color.ringBlue.opacity(item.steps >= dayStepsTarget ? 1.0 : 0.65))
                                 .cornerRadius(6)
                         }
                         .chartXAxis {
@@ -324,10 +374,7 @@ struct ChartsView: View {
     }
 
     private static let shortDayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "it_IT")
-        f.dateFormat = "EEE"
-        return f
+        let f = DateFormatter(); f.locale = Locale(identifier: "it_IT"); f.dateFormat = "EEE"; return f
     }()
 
     private func shortDayLabel(_ date: Date) -> String {

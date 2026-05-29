@@ -16,7 +16,10 @@ struct RootView: View {
             }
         }
         .environmentObject(appState)
-        .onAppear { appState.seedFoodsIfNeeded(context: context) }
+        .onAppear {
+            appState.seedFoodsIfNeeded(context: context)
+            appState.setupInitialTargets(context: context)
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView().environmentObject(appState)
         }

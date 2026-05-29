@@ -3,14 +3,6 @@ import SwiftData
 import Combine
 
 // MARK: - AppState
-//
-// CAMBIAMENTI rispetto alla versione precedente:
-// - Rimossa funzione totals(for:context:) → ora calcolata direttamente
-//   come computed var in TodayView via @Query (vedi TodayView.swift).
-// - Rimossa sportKcal(for:context:) → idem.
-// - Rimossa totalBurned(for:context:) → idem.
-// - sportEntries(for:context:) mantenuta per le view che la usano ancora.
-// - Aggiunto syncHealthKit(for:context:) come shortcut per la UI.
 
 @MainActor
 final class AppState: ObservableObject {
@@ -29,14 +21,9 @@ final class AppState: ObservableObject {
     var currentDateKey: String { currentDate.dateKey }
 
     // ─────────────────────────────────────────────────────────────────────
-    // MARK: - HealthKit Sync (shortcut per la UI)
+    // MARK: - HealthKit Sync
     // ─────────────────────────────────────────────────────────────────────
 
-    /// Chiama questo metodo da TodayView.onAppear e onChange(of: currentDate)
-    /// per sincronizzare passi + calorie attive con HealthKit.
-    /// Chiama questo da TodayView.onAppear e onChange(of: currentDate).
-    /// Usa context (già sul MainActor in SwiftUI) — nessun problema Sendable qui
-    /// perché siamo già su @MainActor.
     func syncHealthKit(for date: Date, context: ModelContext) {
         Task { @MainActor in
             await healthKit.fetchAndSync(for: date, context: context)
@@ -76,6 +63,81 @@ final class AppState: ObservableObject {
         if (try? context.fetchCount(limitsDescriptor)) == 0 {
             context.insert(AppLimits())
         }
+
+        let profileDescriptor = FetchDescriptor<UserProfile>()
+        if (try? context.fetchCount(profileDescriptor)) == 0 {
+            context.insert(UserProfile())
+        }
+
+        let histDescriptor = FetchDescriptor<TargetHistory>()
+        if (try? context.fetchCount(histDescriptor)) == 0 {
+            if let lim = (try? context.fetch(FetchDescriptor<AppLimits>()))?.first {
+                context.insert(TargetHistory(effectiveDate: lim.startDate, from: lim))
+            }
+        }
+
+        try? context.save()
+    }
+
+    /// Crea le entry storiche dei target (16 marzo e 10 maggio 2026) se non esistono ancora,
+    /// e aggiorna AppLimits ai valori attuali. Idempotente: usa il 16 marzo come sentinella.
+    func setupInitialTargets(context: ModelContext) {
+        let cal = Calendar.current
+        var c = DateComponents()
+
+        c.year = 2026; c.month = 3; c.day = 16
+        guard let march16 = cal.date(from: c).map({ cal.startOfDay(for: $0) }) else { return }
+        c.month = 5; c.day = 10
+        guard let may10 = cal.date(from: c).map({ cal.startOfDay(for: $0) }) else { return }
+
+        let histDescriptor = FetchDescriptor<TargetHistory>(
+            sortBy: [SortDescriptor(\.effectiveDate)]
+        )
+        let existing = (try? context.fetch(histDescriptor)) ?? []
+
+        let hasMarch = existing.contains { cal.startOfDay(for: $0.effectiveDate) == march16 }
+
+        if !hasMarch {
+            // Prima esecuzione: inserisci entry storica marzo e aggiorna AppLimits
+            let e1 = TargetHistory()
+            e1.effectiveDate    = march16
+            e1.kcalTarget       = 2200
+            e1.proteinTarget    = 180
+            e1.carbsTarget      = 170
+            e1.fatTarget        = 75
+            e1.fiberTarget      = 30
+            e1.sugarTarget      = 50
+            e1.saturatedFatTarget = 20
+            e1.saltTarget       = 6
+            e1.stepsTarget      = 10000
+            e1.weightTarget     = 85
+            context.insert(e1)
+
+            if let lim = (try? context.fetch(FetchDescriptor<AppLimits>()))?.first {
+                lim.kcalTarget    = 2000
+                lim.proteinTarget = 180
+                lim.carbsTarget   = 150
+                lim.fatTarget     = 75
+            }
+        }
+
+        let hasMay = existing.contains { cal.startOfDay(for: $0.effectiveDate) == may10 }
+        if !hasMay {
+            let e2 = TargetHistory()
+            e2.effectiveDate    = may10
+            e2.kcalTarget       = 2000
+            e2.proteinTarget    = 180
+            e2.carbsTarget      = 150
+            e2.fatTarget        = 75
+            e2.fiberTarget      = 30
+            e2.sugarTarget      = 50
+            e2.saturatedFatTarget = 20
+            e2.saltTarget       = 6
+            e2.stepsTarget      = 10000
+            e2.weightTarget     = 85
+            context.insert(e2)
+        }
+
         try? context.save()
     }
 
@@ -97,7 +159,54 @@ final class AppState: ObservableObject {
         return new
     }
 
-    // Mantenuto per le view che lo usano (ChartsView, ResultsView, ecc.)
+    func userProfile(context: ModelContext) -> UserProfile {
+        let descriptor = FetchDescriptor<UserProfile>()
+        if let existing = try? context.fetch(descriptor).first { return existing }
+        let new = UserProfile()
+        context.insert(new)
+        return new
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: - Target History helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    func targets(for date: Date, context: ModelContext) -> TargetHistory? {
+        let dayStart = Calendar.current.startOfDay(for: date)
+        let descriptor = FetchDescriptor<TargetHistory>(
+            sortBy: [SortDescriptor(\.effectiveDate, order: .reverse)]
+        )
+        let all = (try? context.fetch(descriptor)) ?? []
+        return all.first { Calendar.current.startOfDay(for: $0.effectiveDate) <= dayStart }
+            ?? all.last
+    }
+
+    func saveTargetHistory(from limits: AppLimits, context: ModelContext) {
+        let descriptor = FetchDescriptor<TargetHistory>(
+            sortBy: [SortDescriptor(\.effectiveDate, order: .reverse)]
+        )
+        let all = (try? context.fetch(descriptor)) ?? []
+        if let today = all.first(where: { Calendar.current.isDateInToday($0.effectiveDate) }) {
+            today.kcalTarget         = limits.kcalTarget
+            today.proteinTarget      = limits.proteinTarget
+            today.carbsTarget        = limits.carbsTarget
+            today.fatTarget          = limits.fatTarget
+            today.fiberTarget        = limits.fiberTarget
+            today.sugarTarget        = limits.sugarTarget
+            today.saturatedFatTarget = limits.saturatedFatTarget
+            today.saltTarget         = limits.saltTarget
+            today.stepsTarget        = limits.stepsTarget
+            today.weightTarget       = limits.weightTarget
+        } else {
+            context.insert(TargetHistory(effectiveDate: Date(), from: limits))
+        }
+        try? context.save()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: - Totals helpers
+    // ─────────────────────────────────────────────────────────────────────
+
     struct DayTotals {
         var kcal: Double = 0
         var protein: Double = 0
@@ -116,7 +225,6 @@ final class AppState: ObservableObject {
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    // Mantenuto per ChartsView / ResultsView che lo chiamano ancora con context
     func totals(for dateKey: String, context: ModelContext) -> DayTotals {
         let descriptor = FetchDescriptor<FoodEntry>(
             predicate: #Predicate { $0.dayKey == dateKey }
