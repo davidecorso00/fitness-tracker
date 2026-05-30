@@ -124,6 +124,42 @@ struct SettingsView: View {
                                     editing = LimitField(label: "Target peso", unit: "kg", current: lim.weightTarget) { lim.weightTarget = $0; save() }
                                 }
                             }
+                            LimitGroup(title: "Obiettivo peso") {
+                                LimitRow(label: "Peso obiettivo", value: lim.targetWeight, unit: "kg") {
+                                    editing = LimitField(label: "Peso obiettivo", unit: "kg", current: lim.targetWeight) { lim.targetWeight = $0; save() }
+                                }
+                                HStack {
+                                    Text("Data obiettivo")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(Color(hex: "cccccc"))
+                                    Spacer()
+                                    if lim.targetDate != nil {
+                                        DatePicker("", selection: Binding(
+                                            get: { lim.targetDate ?? Date().adding(days: 90) },
+                                            set: { lim.targetDate = $0; save() }
+                                        ), in: Date()..., displayedComponents: .date)
+                                        .labelsHidden().colorScheme(.dark).tint(.acc2)
+                                        Button {
+                                            lim.targetDate = nil; save()
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.muted)
+                                        }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        Button("Aggiungi") {
+                                            lim.targetDate = Calendar.current.date(byAdding: .month, value: 3, to: Date())
+                                            save()
+                                        }
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.acc2)
+                                    }
+                                }
+                                .padding(.horizontal, 18).padding(.vertical, 13)
+                                .overlay(alignment: .top) {
+                                    Rectangle().fill(Color.white.opacity(0.04)).frame(height: 0.5).padding(.leading, 18)
+                                }
+                            }
 
                             BackupView()
                                 .padding(.horizontal, -20)

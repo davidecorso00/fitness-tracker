@@ -231,6 +231,8 @@ enum SportType: String, CaseIterable, Identifiable {
     var weightTarget: Double = 85
     var waterTarget: Double = 2.0
     var startDate: Date = Date()
+    var targetWeight: Double = 0
+    var targetDate: Date? = nil
 
     init() {}
 }

@@ -116,6 +116,9 @@ struct ResultsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
                     PageHeader("Risultati", subtitle: startSubtitle, showSettings: $showSettings)
+
+                    WeightGoalSection()
+
                     let s = stats
 
                     ResultSection(title: "Corpo") {
