@@ -306,34 +306,55 @@ func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -
     var name: String = ""
     var category: String = "Farmaco"
     var isDaily: Bool = true
-    var useTime: Bool = false
-    var timingPhase: String = "Mattina"
-    var timingHour: Int = 8
-    var timingMinute: Int = 0
+    var notificationEnabled: Bool = false
+    var notificationHour: Int = 20
+    var notificationMinute: Int = 0
     var createdAt: Date = Date()
 
-    init(name: String, category: String, isDaily: Bool, useTime: Bool,
-         timingPhase: String, timingHour: Int, timingMinute: Int) {
+    init(name: String, category: String, isDaily: Bool,
+         notificationEnabled: Bool = false, notificationHour: Int = 20, notificationMinute: Int = 0) {
         self.stableId = UUID().uuidString
         self.name = name
         self.category = category
         self.isDaily = isDaily
-        self.useTime = useTime
-        self.timingPhase = timingPhase
-        self.timingHour = timingHour
-        self.timingMinute = timingMinute
+        self.notificationEnabled = notificationEnabled
+        self.notificationHour = notificationHour
+        self.notificationMinute = notificationMinute
         self.createdAt = Date()
     }
 }
 
-@Model final class MedicineLog {
+@Model final class MedicineDose {
+    var stableId: String = ""
     var medicineStableId: String = ""
+    var quantity: Int = 1
+    var useTime: Bool = false
+    var timingPhase: String = "Mattina"
+    var timingHour: Int = 8
+    var timingMinute: Int = 0
+    var sortOrder: Int = 0
+
+    init(medicineStableId: String, quantity: Int, useTime: Bool,
+         timingPhase: String, timingHour: Int, timingMinute: Int, sortOrder: Int) {
+        self.stableId = UUID().uuidString
+        self.medicineStableId = medicineStableId
+        self.quantity = quantity
+        self.useTime = useTime
+        self.timingPhase = timingPhase
+        self.timingHour = timingHour
+        self.timingMinute = timingMinute
+        self.sortOrder = sortOrder
+    }
+}
+
+@Model final class MedicineLog {
+    var doseStableId: String = ""
     var dayKey: String = ""
     var taken: Bool = false
     var date: Date = Date()
 
-    init(medicineStableId: String, dayKey: String, taken: Bool) {
-        self.medicineStableId = medicineStableId
+    init(doseStableId: String, dayKey: String, taken: Bool) {
+        self.doseStableId = doseStableId
         self.dayKey = dayKey
         self.taken = taken
         self.date = Date()

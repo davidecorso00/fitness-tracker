@@ -12,7 +12,7 @@ struct FitnessAppApp: App {
             AppLimits.self, SportEntry.self,
             UserProfile.self, TargetHistory.self,
             WaterEntry.self,
-            Medicine.self, MedicineLog.self
+            Medicine.self, MedicineDose.self, MedicineLog.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
