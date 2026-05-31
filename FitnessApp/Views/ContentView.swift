@@ -45,7 +45,10 @@ struct RootView: View {
             Tab("Grafici", systemImage: "chart.xyaxis.line", value: 4) {
                 ChartsView(showSettings: $showSettings)
             }
-            Tab("Risultati", systemImage: "trophy.fill", value: 5) {
+            Tab("Predizioni", systemImage: "chart.line.uptrend.xyaxis", value: 5) {
+                PredictionsView(showSettings: $showSettings)
+            }
+            Tab("Risultati", systemImage: "trophy.fill", value: 6) {
                 ResultsView(showSettings: $showSettings)
             }
         }
@@ -67,8 +70,10 @@ struct RootView: View {
                 .tabItem { Label("Palestra", systemImage: "dumbbell.fill") }.tag(3)
             ChartsView(showSettings: $showSettings)
                 .tabItem { Label("Grafici", systemImage: "chart.xyaxis.line") }.tag(4)
+            PredictionsView(showSettings: $showSettings)
+                .tabItem { Label("Predizioni", systemImage: "chart.line.uptrend.xyaxis") }.tag(5)
             ResultsView(showSettings: $showSettings)
-                .tabItem { Label("Risultati", systemImage: "trophy.fill") }.tag(5)
+                .tabItem { Label("Risultati", systemImage: "trophy.fill") }.tag(6)
         }
         .tint(.ringRed)
     }

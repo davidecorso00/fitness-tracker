@@ -117,11 +117,8 @@ struct SettingsView: View {
                                 LimitRow(label: "Passi giornalieri", value: Double(lim.stepsTarget), unit: "") {
                                     editing = LimitField(label: "Passi", unit: "", current: Double(lim.stepsTarget), isInt: true) { lim.stepsTarget = Int($0); save() }
                                 }
-                                LimitRow(label: "Acqua", value: lim.waterTarget, unit: "L") {
+                                LimitRow(label: "Acqua", value: lim.waterTarget, unit: "L", last: true) {
                                     editing = LimitField(label: "Acqua", unit: "L", current: lim.waterTarget) { lim.waterTarget = $0; save() }
-                                }
-                                LimitRow(label: "Target peso", value: lim.weightTarget, unit: "kg", last: true) {
-                                    editing = LimitField(label: "Target peso", unit: "kg", current: lim.weightTarget) { lim.weightTarget = $0; save() }
                                 }
                             }
                             LimitGroup(title: "Obiettivo peso") {

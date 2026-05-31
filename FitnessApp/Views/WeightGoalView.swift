@@ -2,14 +2,36 @@ import SwiftUI
 import SwiftData
 import Charts
 
+// MARK: - PredictionsView (standalone page)
+
+struct PredictionsView: View {
+    @Binding var showSettings: Bool
+
+    var body: some View {
+        ZStack { Color.bg.ignoresSafeArea() }
+        .overlay(
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 20) {
+                    PageHeader("Predizioni", showSettings: $showSettings)
+                    WeightGoalSection()
+                }
+                .padding(.bottom, 120)
+            }
+        )
+    }
+}
+
 // MARK: - WeightGoalSection
 
 struct WeightGoalSection: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \DayLog.dateKey) private var allLogs: [DayLog]
     @Query private var allEntries: [FoodEntry]
     @Query private var allSports: [SportEntry]
     @Query private var allProfiles: [UserProfile]
     @Query private var allLimits: [AppLimits]
+
+    @State private var editing: LimitField?
 
     private var limits: AppLimits? { allLimits.first }
     private var targetWeight: Double { limits?.targetWeight ?? 0 }
@@ -83,7 +105,6 @@ struct WeightGoalSection: View {
     private var w14: DeficitWindow { window(14, label: "14 gg") }
     private var w30: DeficitWindow { window(30, label: "30 gg") }
 
-    // Use 30-day window for projections (most stable)
     private var dailyKgChange: Double { w30.count >= 2 ? w30.avgDeficit / 7700.0 : 0 }
 
     // MARK: - Projections
@@ -155,10 +176,9 @@ struct WeightGoalSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionLabel(text: "Proiezione peso").padding(.horizontal, 20)
-            if targetWeight <= 0 {
-                noGoalCard
-            } else {
+            SectionLabel(text: "Predizioni").padding(.horizontal, 20)
+            goalSettingsCard
+            if targetWeight > 0 {
                 statusCard
                 deficitWindowsCard
                 if !actualPoints.isEmpty || !projectionPoints.isEmpty {
@@ -167,29 +187,52 @@ struct WeightGoalSection: View {
                 insightsCard
             }
         }
+        .sheet(item: $editing) { LimitEditSheet(field: $0) }
     }
 
     // MARK: - Sub-views
 
-    @ViewBuilder private var noGoalCard: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "target")
-                .font(.system(size: 22))
-                .foregroundColor(.muted)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Nessun obiettivo impostato")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.txt)
-                Text("Vai in Impostazioni → Obiettivo peso")
-                    .font(.system(size: 13))
-                    .foregroundColor(.muted)
+    @ViewBuilder private var goalSettingsCard: some View {
+        if let lim = limits {
+            LimitGroup(title: "Obiettivo peso") {
+                LimitRow(label: "Peso obiettivo", value: lim.targetWeight, unit: "kg") {
+                    editing = LimitField(label: "Peso obiettivo", unit: "kg", current: lim.targetWeight) {
+                        lim.targetWeight = $0; try? context.save()
+                    }
+                }
+                HStack {
+                    Text("Data obiettivo")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Color(hex: "cccccc"))
+                    Spacer()
+                    if lim.targetDate != nil {
+                        DatePicker("", selection: Binding(
+                            get: { lim.targetDate ?? Date().adding(days: 90) },
+                            set: { lim.targetDate = $0; try? context.save() }
+                        ), in: Date()..., displayedComponents: .date)
+                        .labelsHidden().colorScheme(.dark).tint(.acc2)
+                        Button {
+                            lim.targetDate = nil; try? context.save()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.muted)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button("Aggiungi") {
+                            lim.targetDate = Calendar.current.date(byAdding: .month, value: 3, to: Date())
+                            try? context.save()
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.acc2)
+                    }
+                }
+                .padding(.horizontal, 18).padding(.vertical, 13)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(Color.white.opacity(0.04)).frame(height: 0.5).padding(.leading, 18)
+                }
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.card, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.04), lineWidth: 0.5))
-        .padding(.horizontal, 20)
     }
 
     @ViewBuilder private var statusCard: some View {
@@ -228,6 +271,7 @@ struct WeightGoalSection: View {
                 }
             }
         }
+        .padding(.horizontal, 20)
     }
 
     @ViewBuilder private var deficitWindowsCard: some View {
@@ -241,6 +285,7 @@ struct WeightGoalSection: View {
                 }
             }
         }
+        .padding(.horizontal, 20)
     }
 
     private func deficitCell(_ win: DeficitWindow) -> some View {
@@ -278,7 +323,6 @@ struct WeightGoalSection: View {
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.04), lineWidth: 0.5))
             .padding(.horizontal, 20)
 
-            // Legend
             HStack(spacing: 16) {
                 legendItem(color: .acc, dash: false, label: "Peso reale")
                 legendItem(color: .muted, dash: true, label: "Proiezione")
@@ -312,12 +356,10 @@ struct WeightGoalSection: View {
                 body: "Negli ultimi 30 giorni sei in surplus calorico. Riduci le calorie per tornare in deficit."
             )
         } else if let cw = currentWeight, abs(cw - targetWeight) < 0.5 {
-            // target already reached – skip insights
             EmptyView()
         } else {
             HTCard {
                 VStack(spacing: 10) {
-                    SectionLabel(text: "Proiezioni").frame(maxWidth: .infinity, alignment: .leading)
                     if let ed = estimatedDate {
                         insightRow(
                             icon: "calendar.badge.clock",
@@ -349,6 +391,7 @@ struct WeightGoalSection: View {
                     }
                 }
             }
+            .padding(.horizontal, 20)
         }
     }
 
@@ -390,7 +433,8 @@ private struct WeightProjectionChart: View {
     var body: some View {
         Chart {
             ForEach(actualPoints, id: \.date) { pt in
-                LineMark(x: .value("Data", pt.date), y: .value("Peso", pt.weight))
+                LineMark(x: .value("Data", pt.date), y: .value("Peso", pt.weight),
+                         series: .value("Serie", "storico"))
                     .foregroundStyle(Color.acc)
                     .interpolationMethod(.catmullRom)
                 PointMark(x: .value("Data", pt.date), y: .value("Peso", pt.weight))
@@ -398,7 +442,8 @@ private struct WeightProjectionChart: View {
                     .symbolSize(25)
             }
             ForEach(projectedPoints, id: \.date) { pt in
-                LineMark(x: .value("Data", pt.date), y: .value("Peso", pt.weight))
+                LineMark(x: .value("Data", pt.date), y: .value("Peso", pt.weight),
+                         series: .value("Serie", "proiezione"))
                     .foregroundStyle(Color.muted.opacity(0.7))
                     .lineStyle(StrokeStyle(lineWidth: 2, dash: [6, 4]))
             }
