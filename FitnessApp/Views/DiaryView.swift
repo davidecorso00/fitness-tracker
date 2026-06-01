@@ -222,13 +222,16 @@ struct AddFoodSheet: View {
     let date: Date
 
     @Query(sort: \FoodItem.name) private var foods: [FoodItem]
+    @Query(sort: \CustomMeal.name) private var customMeals: [CustomMeal]
     @State private var search = ""
+    @State private var tab = 0  // 0 = Alimenti, 1 = Piatti
     @State private var selectedFood: FoodItem?
     @State private var grams = "100"
     @State private var portions = "1"
     @State private var inputMode: InputMode = .grams
     @State private var showEditFood = false
     @State private var showQuickAdd = false
+    @State private var addCustomMealItem: AddCustomMealToDiaryItem?
 
     var filtered: [FoodItem] {
         search.isEmpty ? foods : foods.filter { $0.name.localizedCaseInsensitiveContains(search) }
@@ -256,7 +259,16 @@ struct AddFoodSheet: View {
                     }
                     .padding(12)
                     .background(Color.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 12)
+                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 4)
+
+                    if selectedFood == nil {
+                        Picker("", selection: $tab) {
+                            Text("Alimenti").tag(0)
+                            Text("Piatti").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 20).padding(.vertical, 8)
+                    }
 
                     if let food = selectedFood {
                         ScrollView(showsIndicators: false) {
@@ -320,6 +332,42 @@ struct AddFoodSheet: View {
                                 Spacer()
                             }
                             .padding(.top, 20)
+                        }
+                    } else if tab == 1 {
+                        // Custom meals list
+                        let filteredMeals = search.isEmpty ? customMeals : customMeals.filter { $0.name.localizedCaseInsensitiveContains(search) }
+                        if filteredMeals.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "fork.knife.circle").font(.system(size: 36)).foregroundColor(.muted)
+                                Text("Nessun piatto salvato").font(.system(size: 14)).foregroundColor(.muted)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            List {
+                                ForEach(filteredMeals) { cm in
+                                    Button {
+                                        addCustomMealItem = AddCustomMealToDiaryItem(meal: cm, mealType: meal, date: date)
+                                    } label: {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(cm.name).font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
+                                                Text("\(cm.ingredients.count) ingredienti · \(Int(cm.portions)) porz.")
+                                                    .font(.system(size: 11)).foregroundColor(.muted)
+                                            }
+                                            Spacer()
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text(cm.kcalPerPortion.smartFormat)
+                                                    .font(.system(size: 16, weight: .bold, design: .rounded)).foregroundColor(.txt)
+                                                Text("kcal/porz.").font(.system(size: 10)).foregroundColor(.muted)
+                                            }
+                                        }
+                                    }
+                                    .listRowBackground(Color.card)
+                                    .listRowSeparatorTint(Color.brd)
+                                }
+                            }
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
                         }
                     } else {
                         // Quick add
@@ -388,6 +436,9 @@ struct AddFoodSheet: View {
         }
         .sheet(isPresented: $showQuickAdd) {
             QuickAddSheet(meal: meal, date: date)
+        }
+        .sheet(item: $addCustomMealItem) { item in
+            AddCustomMealToDiarySheet(meal: item.meal, mealType: item.mealType, date: item.date)
         }
     }
 

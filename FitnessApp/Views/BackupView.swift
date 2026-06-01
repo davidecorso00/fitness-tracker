@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Codable structs per export/import
 
 struct BackupData: Codable {
-    var version: Int = 2
+    var version: Int = 3
     var exportDate: Date = Date()
     var foods: [FoodBackup]
     var entries: [EntryBackup]
@@ -13,6 +13,18 @@ struct BackupData: Codable {
     var sports: [SportBackup]?
     var userProfile: UserProfileBackup?
     var targetHistory: [TargetHistoryBackup]?
+    var customMeals: [CustomMealBackup]?
+}
+
+struct CustomMealBackup: Codable {
+    var name: String; var portions: Double
+    var ingredients: [CustomMealIngredientBackup]
+}
+
+struct CustomMealIngredientBackup: Codable {
+    var foodName: String; var grams: Double
+    var kcal: Double; var protein: Double; var carbs: Double; var fat: Double
+    var fiber: Double; var sugar: Double; var saturatedFat: Double; var salt: Double
 }
 
 struct FoodBackup: Codable {
@@ -39,6 +51,7 @@ struct LimitsBackup: Codable {
     var fatTarget: Double; var fiberTarget: Double; var sugarTarget: Double
     var saturatedFatTarget: Double; var saltTarget: Double
     var stepsTarget: Int; var weightTarget: Double; var startDate: Date
+    var macroInputMode: String?
 }
 
 struct SportBackup: Codable {
@@ -74,6 +87,7 @@ final class BackupManager {
         let history = (try? context.fetch(FetchDescriptor<TargetHistory>(
             sortBy: [SortDescriptor(\.effectiveDate)]
         ))) ?? []
+        let cMeals  = (try? context.fetch(FetchDescriptor<CustomMeal>())) ?? []
 
         let backup = BackupData(
             foods: foods.map {
@@ -99,7 +113,8 @@ final class BackupManager {
                     carbsTarget: $0.carbsTarget, fatTarget: $0.fatTarget, fiberTarget: $0.fiberTarget,
                     sugarTarget: $0.sugarTarget, saturatedFatTarget: $0.saturatedFatTarget,
                     saltTarget: $0.saltTarget, stepsTarget: $0.stepsTarget,
-                    weightTarget: $0.weightTarget, startDate: $0.startDate)
+                    weightTarget: $0.weightTarget, startDate: $0.startDate,
+                    macroInputMode: $0.macroInputMode)
             },
             sports: sports.map {
                 SportBackup(dayKey: $0.dayKey, sportName: $0.sportName,
@@ -115,6 +130,15 @@ final class BackupManager {
                     fiberTarget: $0.fiberTarget, sugarTarget: $0.sugarTarget,
                     saturatedFatTarget: $0.saturatedFatTarget, saltTarget: $0.saltTarget,
                     stepsTarget: $0.stepsTarget, weightTarget: $0.weightTarget)
+            },
+            customMeals: cMeals.map { cm in
+                CustomMealBackup(name: cm.name, portions: cm.portions,
+                    ingredients: cm.ingredients.map { ing in
+                        CustomMealIngredientBackup(foodName: ing.foodName, grams: ing.grams,
+                            kcal: ing.kcalPer100g, protein: ing.proteinPer100g, carbs: ing.carbsPer100g,
+                            fat: ing.fatPer100g, fiber: ing.fiberPer100g, sugar: ing.sugarPer100g,
+                            saturatedFat: ing.saturatedFatPer100g, salt: ing.saltPer100g)
+                    })
             }
         )
 
@@ -136,6 +160,8 @@ final class BackupManager {
         try context.delete(model: SportEntry.self)
         try context.delete(model: UserProfile.self)
         try context.delete(model: TargetHistory.self)
+        try context.delete(model: CustomMeal.self)
+        try context.delete(model: CustomMealIngredient.self)
 
         for f in backup.foods {
             context.insert(FoodItem(name: f.name, kcalPer100g: f.kcal, proteinPer100g: f.protein,
@@ -173,6 +199,7 @@ final class BackupManager {
             lim.saturatedFatTarget = l.saturatedFatTarget; lim.saltTarget = l.saltTarget
             lim.stepsTarget = l.stepsTarget; lim.weightTarget = l.weightTarget
             lim.startDate = l.startDate
+            lim.macroInputMode = l.macroInputMode ?? "grams"
             context.insert(lim)
         }
 
@@ -203,6 +230,21 @@ final class BackupManager {
             hist.stepsTarget        = t.stepsTarget
             hist.weightTarget       = t.weightTarget
             context.insert(hist)
+        }
+
+        for cm in backup.customMeals ?? [] {
+            let meal = CustomMeal(); meal.name = cm.name; meal.portions = cm.portions
+            context.insert(meal)
+            for bi in cm.ingredients {
+                let ing = CustomMealIngredient()
+                ing.foodName = bi.foodName; ing.grams = bi.grams
+                ing.kcalPer100g = bi.kcal; ing.proteinPer100g = bi.protein
+                ing.carbsPer100g = bi.carbs; ing.fatPer100g = bi.fat
+                ing.fiberPer100g = bi.fiber; ing.sugarPer100g = bi.sugar
+                ing.saturatedFatPer100g = bi.saturatedFat; ing.saltPer100g = bi.salt
+                ing.meal = meal; context.insert(ing)
+                meal.ingredients.append(ing)
+            }
         }
 
         try context.save()
