@@ -21,72 +21,58 @@ enum ChartPeriod: String, CaseIterable {
 struct ChartsView: View {
     @Binding var showSettings: Bool
     @Environment(\.modelContext) private var context
-    @EnvironmentObject private var appState: AppState
 
-    @Query private var allLogs: [DayLog]
+    @Query(sort: \DayLog.dateKey) private var allLogs: [DayLog]
     @Query private var allEntries: [FoodEntry]
     @Query private var allLimits: [AppLimits]
     @Query private var allSports: [SportEntry]
-    @Query private var allTargetHistory: [TargetHistory]
+    @Query(sort: \TargetHistory.effectiveDate) private var allTargetHistory: [TargetHistory]
     @Query private var allProfiles: [UserProfile]
     @Query private var allWaterEntries: [WaterEntry]
 
     @State private var period: ChartPeriod = .week
+
+    // Cached lookup dicts — rebuilt in O(n) on data change, O(1) per lookup in charts
+    @State private var kcalByDay: [String: Double] = [:]
+    @State private var proteinByDay: [String: Double] = [:]
+    @State private var sportKcalByDay: [String: Double] = [:]
+    @State private var waterByDay: [String: Double] = [:]
+    @State private var logByDay: [String: DayLog] = [:]
+    @State private var sortedWeights: [(String, Double)] = []
+
+    private var dataFingerprint: Int {
+        allEntries.count &* 31 &+ allLogs.count &* 37
+            &+ allSports.count &* 41 &+ allWaterEntries.count &* 43
+    }
 
     private var dates: [Date] {
         let today = Calendar.current.startOfDay(for: Date())
         return (0..<period.days).reversed().map { today.adding(days: -$0) }
     }
 
-    private func log(for date: Date) -> DayLog? {
-        let key = date.dateKey
-        return allLogs.first { $0.dateKey == key }
-    }
+    // O(1) dict-based lookups (dicts rebuilt via rebuildDicts on data change)
+    private func log(for date: Date) -> DayLog? { logByDay[date.dateKey] }
+    private func kcal(for date: Date) -> Double  { kcalByDay[date.dateKey] ?? 0 }
+    private func protein(for date: Date) -> Double { proteinByDay[date.dateKey] ?? 0 }
+    private func sportKcal(for date: Date) -> Double { sportKcalByDay[date.dateKey] ?? 0 }
+    private func water(for date: Date) -> Double { waterByDay[date.dateKey] ?? 0 }
 
-    private func kcal(for date: Date) -> Double {
-        let key = date.dateKey
-        return allEntries.filter { $0.dayKey == key }.reduce(0) { $0 + $1.kcalSnapshot }
-    }
-
-    private func protein(for date: Date) -> Double {
-        let key = date.dateKey
-        return allEntries.filter { $0.dayKey == key }.reduce(0) { $0 + $1.proteinSnapshot }
-    }
-
-    private func sportKcal(for date: Date) -> Double {
-        let key = date.dateKey
-        return allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
-    }
-
-    private func water(for date: Date) -> Double {
-        let key = date.dateKey
-        return allWaterEntries.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.liters }
-    }
-
-    /// Target in vigore per una data (non retroattivo).
+    // allTargetHistory is sorted ascending by @Query — use last(where:) for O(n) with small n
     private func targets(for date: Date) -> TargetHistory? {
         let dayStart = Calendar.current.startOfDay(for: date)
-        return allTargetHistory
-            .filter { Calendar.current.startOfDay(for: $0.effectiveDate) <= dayStart }
-            .max(by: { $0.effectiveDate < $1.effectiveDate })
-            ?? allTargetHistory.min(by: { $0.effectiveDate < $1.effectiveDate })
+        return allTargetHistory.last {
+            Calendar.current.startOfDay(for: $0.effectiveDate) <= dayStart
+        } ?? allTargetHistory.first
     }
 
-    /// Peso più recente registrato nei DayLog entro la data indicata.
+    // sortedWeights is [(dateKey, weight)] ascending — last(where:) is O(n) on typically tiny array
     private func weight(for date: Date) -> Double? {
-        let key = date.dateKey
-        return allLogs
-            .filter { $0.dateKey <= key && $0.weight != nil }
-            .max(by: { $0.dateKey < $1.dateKey })?
-            .weight
+        sortedWeights.last { $0.0 <= date.dateKey }?.1
     }
 
-    /// Spesa energetica totale del giorno: BMR × 1.2 + calorie attive HealthKit + sport.
-    /// Se il profilo è incompleto ritorna solo le calorie attive.
     private func totalDailyBurn(for date: Date) -> Double {
         let log          = self.log(for: date)
         let activityKcal = Double(log?.burnedKcal ?? 0) + sportKcal(for: date)
-
         if let profile = allProfiles.first,
            let heightCm = profile.heightCm,
            let birthDate = profile.birthDate,
@@ -95,27 +81,40 @@ struct ChartsView: View {
             let bmr = calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
             return bmr + activityKcal
         }
-
         return activityKcal
     }
 
-    /// Grasso perso/guadagnato cumulativo. Deficit = BMR×1.2 + attività − mangiato.
     private func fatLossData() -> [(date: Date, kg: Double)] {
-        let datesWithData = dates.filter { kcal(for: $0) > 0 || (log(for: $0)?.steps ?? 0) > 0 }
-        guard !datesWithData.isEmpty else { return [] }
-
+        let hasSomeData = dates.contains { kcal(for: $0) > 0 || (log(for: $0)?.steps ?? 0) > 0 }
+        guard hasSomeData else { return [] }
         var cumulative = 0.0
         var result: [(Date, Double)] = []
-
         for date in dates {
             let eaten = kcal(for: date)
             if eaten == 0 && (log(for: date)?.burnedKcal ?? 0) == 0 { continue }
-            let deficit  = totalDailyBurn(for: date) - eaten
-            let kgChange = deficit / 7700.0
-            cumulative  += kgChange
+            let deficit = totalDailyBurn(for: date) - eaten
+            cumulative += deficit / 7700.0
             result.append((date, cumulative))
         }
         return result
+    }
+
+    // Rebuild all lookup dicts in O(n) — called on appear and on data count changes
+    private func rebuildDicts() {
+        var kd = [String: Double](), pd = [String: Double]()
+        for e in allEntries { kd[e.dayKey, default: 0] += e.kcalSnapshot; pd[e.dayKey, default: 0] += e.proteinSnapshot }
+        var sd = [String: Double]()
+        for s in allSports { sd[s.dayKey, default: 0] += s.kcalBurned }
+        var wd = [String: Double]()
+        for w in allWaterEntries { wd[w.dayKey, default: 0] += w.liters }
+        var ld = [String: DayLog]()
+        var sw = [(String, Double)]()
+        for log in allLogs { // sorted ascending
+            ld[log.dateKey] = log
+            if let w = log.weight { sw.append((log.dateKey, w)) }
+        }
+        kcalByDay = kd; proteinByDay = pd; sportKcalByDay = sd
+        waterByDay = wd; logByDay = ld; sortedWeights = sw
     }
 
     var body: some View {
@@ -433,6 +432,8 @@ struct ChartsView: View {
                 .padding(.bottom, 120)
             }
         )
+        .onAppear { rebuildDicts() }
+        .onChange(of: dataFingerprint) { rebuildDicts() }
     }
 
     private static let shortDayFormatter: DateFormatter = {
