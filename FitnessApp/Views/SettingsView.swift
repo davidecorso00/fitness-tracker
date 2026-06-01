@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var profile: UserProfile?
     @State private var todayLog: DayLog?
     @State private var editing: LimitField?
+    @State private var showNutritionGoals = false
 
     @Query(sort: \DayLog.dateKey, order: .reverse) private var allLogs: [DayLog]
 
@@ -85,43 +86,77 @@ struct SettingsView: View {
 
                         // ── Target nutrizionali ─────────────────────────────
                         if let lim = limits {
-                            LimitGroup(title: "Macronutrienti") {
-                                LimitRow(label: "Calorie", value: lim.kcalTarget, unit: "kcal") {
-                                    editing = LimitField(label: "Calorie", unit: "kcal", current: lim.kcalTarget) { lim.kcalTarget = $0; save() }
+                            Button { showNutritionGoals = true } label: {
+                                VStack(spacing: 0) {
+                                    HStack {
+                                        SectionLabel(text: "Obiettivi nutrizionali")
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(Color(hex: "444444"))
+                                    }
+                                    .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 10)
+
+                                    HStack(spacing: 0) {
+                                        macroSummaryItem(label: "Kcal", value: lim.kcalTarget.formatted0, color: .ringRed)
+                                        Rectangle().fill(Color.brd).frame(width: 0.5, height: 32)
+                                        macroSummaryItem(label: "Proteine", value: "\(lim.proteinTarget.smartFormat)g", color: .ringGreen)
+                                        Rectangle().fill(Color.brd).frame(width: 0.5, height: 32)
+                                        macroSummaryItem(label: "Carbo", value: "\(lim.carbsTarget.smartFormat)g", color: .gymBlue)
+                                        Rectangle().fill(Color.brd).frame(width: 0.5, height: 32)
+                                        macroSummaryItem(label: "Grassi", value: "\(lim.fatTarget.smartFormat)g", color: .gymOrange)
+                                    }
+                                    .padding(.horizontal, 18).padding(.bottom, 14)
                                 }
-                                LimitRow(label: "Proteine", value: lim.proteinTarget, unit: "g") {
-                                    editing = LimitField(label: "Proteine", unit: "g", current: lim.proteinTarget) { lim.proteinTarget = $0; save() }
-                                }
-                                LimitRow(label: "Carboidrati", value: lim.carbsTarget, unit: "g") {
-                                    editing = LimitField(label: "Carboidrati", unit: "g", current: lim.carbsTarget) { lim.carbsTarget = $0; save() }
-                                }
-                                LimitRow(label: "Grassi", value: lim.fatTarget, unit: "g", last: true) {
-                                    editing = LimitField(label: "Grassi", unit: "g", current: lim.fatTarget) { lim.fatTarget = $0; save() }
-                                }
+                                .background(Color.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(Color.white.opacity(0.04), lineWidth: 0.5))
                             }
-                            LimitGroup(title: "Micronutrienti") {
-                                LimitRow(label: "Zuccheri", value: lim.sugarTarget, unit: "g") {
-                                    editing = LimitField(label: "Zuccheri", unit: "g", current: lim.sugarTarget) { lim.sugarTarget = $0; save() }
-                                }
-                                LimitRow(label: "Grassi saturi", value: lim.saturatedFatTarget, unit: "g") {
-                                    editing = LimitField(label: "Grassi saturi", unit: "g", current: lim.saturatedFatTarget) { lim.saturatedFatTarget = $0; save() }
-                                }
-                                LimitRow(label: "Fibre", value: lim.fiberTarget, unit: "g") {
-                                    editing = LimitField(label: "Fibre", unit: "g", current: lim.fiberTarget) { lim.fiberTarget = $0; save() }
-                                }
-                                LimitRow(label: "Sale", value: lim.saltTarget, unit: "g", last: true) {
-                                    editing = LimitField(label: "Sale", unit: "g", current: lim.saltTarget) { lim.saltTarget = $0; save() }
-                                }
-                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 20)
+
                             LimitGroup(title: "Attività & Obiettivi") {
                                 LimitRow(label: "Passi giornalieri", value: Double(lim.stepsTarget), unit: "") {
                                     editing = LimitField(label: "Passi", unit: "", current: Double(lim.stepsTarget), isInt: true) { lim.stepsTarget = Int($0); save() }
                                 }
-                                LimitRow(label: "Acqua", value: lim.waterTarget, unit: "L") {
+                                LimitRow(label: "Acqua", value: lim.waterTarget, unit: "L", last: true) {
                                     editing = LimitField(label: "Acqua", unit: "L", current: lim.waterTarget) { lim.waterTarget = $0; save() }
                                 }
-                                LimitRow(label: "Target peso", value: lim.weightTarget, unit: "kg", last: true) {
-                                    editing = LimitField(label: "Target peso", unit: "kg", current: lim.weightTarget) { lim.weightTarget = $0; save() }
+                            }
+                            LimitGroup(title: "Obiettivo peso") {
+                                LimitRow(label: "Peso obiettivo", value: lim.targetWeight, unit: "kg") {
+                                    editing = LimitField(label: "Peso obiettivo", unit: "kg", current: lim.targetWeight) { lim.targetWeight = $0; save() }
+                                }
+                                HStack {
+                                    Text("Data obiettivo")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(Color(hex: "cccccc"))
+                                    Spacer()
+                                    if lim.targetDate != nil {
+                                        DatePicker("", selection: Binding(
+                                            get: { lim.targetDate ?? Date().adding(days: 90) },
+                                            set: { lim.targetDate = $0; save() }
+                                        ), in: Date()..., displayedComponents: .date)
+                                        .labelsHidden().colorScheme(.dark).tint(.acc2)
+                                        Button {
+                                            lim.targetDate = nil; save()
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.muted)
+                                        }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        Button("Aggiungi") {
+                                            lim.targetDate = Calendar.current.date(byAdding: .month, value: 3, to: Date())
+                                            save()
+                                        }
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.acc2)
+                                    }
+                                }
+                                .padding(.horizontal, 18).padding(.vertical, 13)
+                                .overlay(alignment: .top) {
+                                    Rectangle().fill(Color.white.opacity(0.04)).frame(height: 0.5).padding(.leading, 18)
                                 }
                             }
 
@@ -172,6 +207,7 @@ struct SettingsView: View {
             profile  = appState.userProfile(context: context)
             todayLog = appState.dayLog(for: Date().dateKey, context: context)
         }
+        .sheet(isPresented: $showNutritionGoals) { NutritionalGoalsView() }
         .sheet(item: $editing) { LimitEditSheet(field: $0) }
     }
 
@@ -180,6 +216,19 @@ struct SettingsView: View {
         if let lim = limits {
             appState.saveTargetHistory(from: lim, context: context)
         }
+    }
+
+    @ViewBuilder
+    private func macroSummaryItem(label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(color)
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.muted)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

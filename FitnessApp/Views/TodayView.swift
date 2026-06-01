@@ -11,6 +11,7 @@ struct TodayView: View {
     @Query private var allSports: [SportEntry]
     @Query private var allLimits: [AppLimits]
     @Query private var allProfiles: [UserProfile]
+    @Query private var allWaterEntries: [WaterEntry]
 
     @State private var weightInput: String = ""
     @State private var appeared: Bool      = false
@@ -120,6 +121,26 @@ struct TodayView: View {
             date = date.adding(days: -1)
         }
         return nil
+    }
+
+    private var todayWaterTotal: Double {
+        allWaterEntries.filter { $0.dayKey == Date().dateKey }.reduce(0) { $0 + $1.liters }
+    }
+
+    private var todaySteps: Int {
+        allLogs.first { $0.dateKey == Date().dateKey }?.steps ?? 0
+    }
+
+    private func writeWidgetData() {
+        let k = Date().dateKey
+        let kcal = allEntries.filter { $0.dayKey == k }.reduce(0.0) { $0 + $1.kcalSnapshot }
+        let prot = allEntries.filter { $0.dayKey == k }.reduce(0.0) { $0 + $1.proteinSnapshot }
+        WidgetDataWriter.write(
+            kcalEaten: kcal,   kcalTarget:    limits?.kcalTarget    ?? 2255,
+            proteinEaten: prot, proteinTarget: limits?.proteinTarget ?? 200,
+            waterLiters: todayWaterTotal, waterTarget: limits?.waterTarget ?? 2.0,
+            steps: todaySteps, stepsTarget: limits?.stepsTarget ?? 10000
+        )
     }
 
     // ── Body ──────────────────────────────────────────────────────────────
@@ -296,6 +317,7 @@ struct TodayView: View {
             syncInputFields()
             withAnimation(.easeOut(duration: 0.8).delay(0.2)) { appeared = true }
             appState.syncHealthKit(for: appState.currentDate, context: context)
+            writeWidgetData()
         }
         .onChange(of: appState.currentDate) {
             appeared = false
@@ -304,6 +326,9 @@ struct TodayView: View {
             appState.syncHealthKit(for: appState.currentDate, context: context)
         }
         .onChange(of: dayLog?.weight) { syncInputFields() }
+        .onChange(of: allEntries.count) { writeWidgetData() }
+        .onChange(of: todayWaterTotal) { writeWidgetData() }
+        .onChange(of: todaySteps) { writeWidgetData() }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────

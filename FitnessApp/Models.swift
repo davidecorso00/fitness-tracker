@@ -231,6 +231,9 @@ enum SportType: String, CaseIterable, Identifiable {
     var weightTarget: Double = 85
     var waterTarget: Double = 2.0
     var startDate: Date = Date()
+    var targetWeight: Double = 0
+    var targetDate: Date? = nil
+    var macroInputMode: String = "grams"
 
     init() {}
 }
@@ -296,6 +299,122 @@ func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -
         self.saltTarget         = limits.saltTarget
         self.stepsTarget        = limits.stepsTarget
         self.weightTarget       = limits.weightTarget
+    }
+}
+
+// MARK: - Medicine
+
+@Model final class Medicine {
+    var stableId: String = ""
+    var name: String = ""
+    var category: String = "Farmaco"
+    var isDaily: Bool = true
+    var notificationEnabled: Bool = false
+    var notificationHour: Int = 20
+    var notificationMinute: Int = 0
+    var createdAt: Date = Date()
+
+    init(name: String, category: String, isDaily: Bool,
+         notificationEnabled: Bool = false, notificationHour: Int = 20, notificationMinute: Int = 0) {
+        self.stableId = UUID().uuidString
+        self.name = name
+        self.category = category
+        self.isDaily = isDaily
+        self.notificationEnabled = notificationEnabled
+        self.notificationHour = notificationHour
+        self.notificationMinute = notificationMinute
+        self.createdAt = Date()
+    }
+}
+
+@Model final class MedicineDose {
+    var stableId: String = ""
+    var medicineStableId: String = ""
+    var quantity: Int = 1
+    var useTime: Bool = false
+    var timingPhase: String = "Mattina"
+    var timingHour: Int = 8
+    var timingMinute: Int = 0
+    var sortOrder: Int = 0
+
+    init(medicineStableId: String, quantity: Int, useTime: Bool,
+         timingPhase: String, timingHour: Int, timingMinute: Int, sortOrder: Int) {
+        self.stableId = UUID().uuidString
+        self.medicineStableId = medicineStableId
+        self.quantity = quantity
+        self.useTime = useTime
+        self.timingPhase = timingPhase
+        self.timingHour = timingHour
+        self.timingMinute = timingMinute
+        self.sortOrder = sortOrder
+    }
+}
+
+@Model final class MedicineLog {
+    var doseStableId: String = ""
+    var dayKey: String = ""
+    var taken: Bool = false
+    var date: Date = Date()
+
+    init(doseStableId: String, dayKey: String, taken: Bool) {
+        self.doseStableId = doseStableId
+        self.dayKey = dayKey
+        self.taken = taken
+        self.date = Date()
+    }
+}
+
+// MARK: - Custom Meal
+
+@Model final class CustomMeal {
+    var name: String = ""
+    var portions: Double = 1
+    var createdAt: Date = Date()
+    @Relationship(deleteRule: .cascade, inverse: \CustomMealIngredient.meal)
+    var ingredients: [CustomMealIngredient] = []
+
+    init() {}
+
+    var totalKcal: Double    { ingredients.reduce(0) { $0 + $1.kcalPer100g * $1.grams / 100 } }
+    var totalProtein: Double { ingredients.reduce(0) { $0 + $1.proteinPer100g * $1.grams / 100 } }
+    var totalCarbs: Double   { ingredients.reduce(0) { $0 + $1.carbsPer100g * $1.grams / 100 } }
+    var totalFat: Double     { ingredients.reduce(0) { $0 + $1.fatPer100g * $1.grams / 100 } }
+    var totalFiber: Double   { ingredients.reduce(0) { $0 + $1.fiberPer100g * $1.grams / 100 } }
+    var totalSugar: Double   { ingredients.reduce(0) { $0 + $1.sugarPer100g * $1.grams / 100 } }
+    var totalSaturatedFat: Double { ingredients.reduce(0) { $0 + $1.saturatedFatPer100g * $1.grams / 100 } }
+    var totalSalt: Double    { ingredients.reduce(0) { $0 + $1.saltPer100g * $1.grams / 100 } }
+
+    var kcalPerPortion: Double    { totalKcal / max(portions, 1) }
+    var proteinPerPortion: Double { totalProtein / max(portions, 1) }
+    var carbsPerPortion: Double   { totalCarbs / max(portions, 1) }
+    var fatPerPortion: Double     { totalFat / max(portions, 1) }
+    var fiberPerPortion: Double   { totalFiber / max(portions, 1) }
+    var sugarPerPortion: Double   { totalSugar / max(portions, 1) }
+    var saturatedFatPerPortion: Double { totalSaturatedFat / max(portions, 1) }
+    var saltPerPortion: Double    { totalSalt / max(portions, 1) }
+}
+
+@Model final class CustomMealIngredient {
+    var grams: Double = 0
+    var foodName: String = ""
+    var kcalPer100g: Double = 0
+    var proteinPer100g: Double = 0
+    var carbsPer100g: Double = 0
+    var fatPer100g: Double = 0
+    var fiberPer100g: Double = 0
+    var sugarPer100g: Double = 0
+    var saturatedFatPer100g: Double = 0
+    var saltPer100g: Double = 0
+    var meal: CustomMeal? = nil
+
+    init() {}
+
+    func fill(from food: FoodItem) {
+        foodName = food.name
+        kcalPer100g = food.kcalPer100g; proteinPer100g = food.proteinPer100g
+        carbsPer100g = food.carbsPer100g; fatPer100g = food.fatPer100g
+        fiberPer100g = food.fiberPer100g; sugarPer100g = food.sugarPer100g
+        saturatedFatPer100g = food.saturatedFatPer100g; saltPer100g = food.saltPer100g
     }
 }
 

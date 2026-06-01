@@ -11,7 +11,9 @@ struct FitnessAppApp: App {
             FoodItem.self, FoodEntry.self, DayLog.self,
             AppLimits.self, SportEntry.self,
             UserProfile.self, TargetHistory.self,
-            WaterEntry.self
+            WaterEntry.self,
+            Medicine.self, MedicineDose.self, MedicineLog.self,
+            CustomMeal.self, CustomMealIngredient.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

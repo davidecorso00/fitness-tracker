@@ -5,6 +5,11 @@ import SwiftData
 struct FoodEditItem: Identifiable {
     let id = UUID()
     let food: FoodItem?
+    let prefill: FoodPrefill?
+    init(food: FoodItem?, prefill: FoodPrefill? = nil) {
+        self.food = food
+        self.prefill = prefill
+    }
 }
 
 struct FoodsView: View {
@@ -15,6 +20,8 @@ struct FoodsView: View {
 
     @State private var search = ""
     @State private var sheetItem: FoodEditItem?
+    @State private var showScanner = false
+    @State private var isLoadingFood = false
 
     var filtered: [FoodItem] {
         search.isEmpty ? foods : foods.filter { $0.name.localizedCaseInsensitiveContains(search) }
@@ -28,6 +35,14 @@ struct FoodsView: View {
                         Image(systemName: "magnifyingglass").foregroundColor(.muted)
                         TextField("Cerca alimento...", text: $search)
                             .foregroundColor(.txt).tint(.acc2)
+                        Button {
+                            showScanner = true
+                        } label: {
+                            Image(systemName: "barcode.viewfinder")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.muted)
+                        }
+                        .buttonStyle(.plain)
                         Button {
                             sheetItem = FoodEditItem(food: nil)
                         } label: {
@@ -57,6 +72,15 @@ struct FoodsView: View {
                                     .foregroundColor(.muted)
                             }
                             Spacer()
+                            Button {
+                                showScanner = true
+                            } label: {
+                                Image(systemName: "barcode.viewfinder")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.muted)
+                                    .padding(.horizontal, 8).padding(.vertical, 9)
+                            }
+                            .buttonStyle(.plain)
                             Button {
                                 sheetItem = FoodEditItem(food: nil)
                             } label: {
@@ -88,7 +112,34 @@ struct FoodsView: View {
             }
         }
         .sheet(item: $sheetItem) { item in
-            FoodFormSheet(food: item.food)
+            FoodFormSheet(food: item.food, prefill: item.prefill)
+        }
+        .sheet(isPresented: $showScanner) {
+            BarcodeScannerSheet { barcode in
+                isLoadingFood = true
+                Task {
+                    let prefill = await OpenFoodFactsService.fetch(barcode: barcode)
+                    await MainActor.run {
+                        isLoadingFood = false
+                        sheetItem = FoodEditItem(food: nil, prefill: prefill)
+                    }
+                }
+            }
+        }
+        .overlay {
+            if isLoadingFood {
+                ZStack {
+                    Color.black.opacity(0.5).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView().tint(.white)
+                        Text("Ricerca prodotto...")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                    .padding(24)
+                    .background(Color(hex: "252525"), in: RoundedRectangle(cornerRadius: 16))
+                }
+            }
         }
     }
 
@@ -167,21 +218,23 @@ struct FoodFormSheet: View {
     @State private var salt: String
     @State private var portionName: String
     @State private var portionGrams: String
+    @State private var scanMessage: String
 
-    init(food: FoodItem?) {
+    init(food: FoodItem?, prefill: FoodPrefill? = nil) {
         self.food = food
-        _name         = State(initialValue: food?.name ?? "")
+        _name         = State(initialValue: food?.name ?? prefill?.name ?? "")
         _baseGrams    = State(initialValue: "100")
-        _kcal         = State(initialValue: food.map { $0.kcalPer100g.smartFormat } ?? "")
-        _protein      = State(initialValue: food.map { $0.proteinPer100g.smartFormat } ?? "")
-        _carbs        = State(initialValue: food.map { $0.carbsPer100g.smartFormat } ?? "")
-        _fat          = State(initialValue: food.map { $0.fatPer100g.smartFormat } ?? "")
-        _fiber        = State(initialValue: food.map { $0.fiberPer100g.smartFormat } ?? "")
-        _sugar        = State(initialValue: food.map { $0.sugarPer100g.smartFormat } ?? "")
-        _saturatedFat = State(initialValue: food.map { $0.saturatedFatPer100g.smartFormat } ?? "")
-        _salt         = State(initialValue: food.map { $0.saltPer100g.smartFormat } ?? "")
+        _kcal         = State(initialValue: food.map { $0.kcalPer100g.smartFormat } ?? prefill?.kcal ?? "")
+        _protein      = State(initialValue: food.map { $0.proteinPer100g.smartFormat } ?? prefill?.protein ?? "")
+        _carbs        = State(initialValue: food.map { $0.carbsPer100g.smartFormat } ?? prefill?.carbs ?? "")
+        _fat          = State(initialValue: food.map { $0.fatPer100g.smartFormat } ?? prefill?.fat ?? "")
+        _fiber        = State(initialValue: food.map { $0.fiberPer100g.smartFormat } ?? prefill?.fiber ?? "")
+        _sugar        = State(initialValue: food.map { $0.sugarPer100g.smartFormat } ?? prefill?.sugar ?? "")
+        _saturatedFat = State(initialValue: food.map { $0.saturatedFatPer100g.smartFormat } ?? prefill?.saturatedFat ?? "")
+        _salt         = State(initialValue: food.map { $0.saltPer100g.smartFormat } ?? prefill?.salt ?? "")
         _portionName  = State(initialValue: food?.portionName ?? "")
         _portionGrams = State(initialValue: food?.portionGrams.map { $0.smartFormat } ?? "")
+        _scanMessage  = State(initialValue: prefill?.scanMessage ?? "")
     }
 
     var isValid: Bool { !name.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
@@ -192,6 +245,18 @@ struct FoodFormSheet: View {
             .overlay(
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 14) {
+                        if !scanMessage.isEmpty {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.gymOrange)
+                                Text(scanMessage)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.gymOrange)
+                                Spacer()
+                            }
+                            .padding(12)
+                            .background(Color.gymOrange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        }
                         HTCard {
                             VStack(spacing: 12) {
                                 SectionLabel(text: "Nome").frame(maxWidth: .infinity, alignment: .leading)

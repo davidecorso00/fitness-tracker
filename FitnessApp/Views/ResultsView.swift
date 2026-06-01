@@ -116,6 +116,7 @@ struct ResultsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
                     PageHeader("Risultati", subtitle: startSubtitle, showSettings: $showSettings)
+
                     let s = stats
 
                     ResultSection(title: "Corpo") {
