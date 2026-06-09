@@ -2,11 +2,81 @@ import SwiftUI
 import SwiftData
 import Combine
 
+// MARK: - Active Workout Session
+
+@Observable
+final class ActiveWorkoutSession {
+    let template: WorkoutTemplate?
+    let templateName: String
+    let startTime: Date = Date()
+    var entryVMs: [ActiveEntryVM] = []
+    var elapsedSeconds: Int = 0
+    var isResting: Bool = false
+    var restSecondsLeft: Int = 0
+    var isInitialized: Bool = false
+
+    private var elapsedTask: Task<Void, Never>?
+    private var restTask: Task<Void, Never>?
+
+    init(template: WorkoutTemplate?) {
+        self.template = template
+        self.templateName = template?.name ?? "Allenamento libero"
+        startElapsedTimer()
+    }
+
+    var elapsedDisplay: String {
+        let h = elapsedSeconds / 3600
+        let m = (elapsedSeconds % 3600) / 60
+        let s = elapsedSeconds % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    private func startElapsedTimer() {
+        elapsedTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                self?.elapsedSeconds += 1
+            }
+        }
+    }
+
+    func startRest(seconds: Int) {
+        restTask?.cancel()
+        restSecondsLeft = seconds
+        isResting = true
+        restTask = Task { @MainActor [weak self] in
+            var s = seconds
+            while s > 0 && !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                s -= 1
+                self?.restSecondsLeft = s
+            }
+            if !Task.isCancelled { self?.isResting = false }
+        }
+    }
+
+    func skipRest() {
+        restTask?.cancel()
+        restSecondsLeft = 0
+        isResting = false
+    }
+
+    func stop() {
+        elapsedTask?.cancel()
+        restTask?.cancel()
+    }
+}
+
 // MARK: - AppState
 
 @MainActor
 final class AppState: ObservableObject {
     @Published var currentDate: Date = Calendar.current.startOfDay(for: Date())
+    @Published var activeWorkoutSession: ActiveWorkoutSession? = nil
+    @Published var showWorkoutSheet: Bool = false
 
     let healthKit = HealthKitManager()
 
@@ -77,6 +147,109 @@ final class AppState: ObservableObject {
         }
 
         try? context.save()
+    }
+
+    func seedExercisesIfNeeded(context: ModelContext) {
+        guard (try? context.fetchCount(FetchDescriptor<Exercise>())) == 0 else { return }
+        let defaults: [(String, String)] = [
+            ("Panca Piana", "Petto"), ("Panca Inclinata", "Petto"), ("Panca Declinata", "Petto"),
+            ("Croci ai Cavi", "Petto"), ("Dips", "Petto"),
+            ("Squat", "Quadricipiti"), ("Leg Press", "Quadricipiti"), ("Leg Extension", "Quadricipiti"),
+            ("Affondi", "Quadricipiti"), ("Front Squat", "Quadricipiti"),
+            ("Bulgarian Split Squat", "Quadricipiti"), ("Hack Squat", "Quadricipiti"),
+            ("Leg Curl", "Femorali"), ("Leg Curl Prono", "Femorali"),
+            ("Stacco Rumeno", "Femorali"), ("Good Morning", "Femorali"),
+            ("Calf in Piedi", "Polpacci"), ("Calf Seduto", "Polpacci"), ("Calf alla Macchina", "Polpacci"),
+            ("Adduttore alla Macchina", "Adduttori"), ("Plié Squat", "Adduttori"),
+            ("Abduttore alla Macchina", "Abduttori"), ("Clamshell", "Abduttori"),
+            ("Stacco da Terra", "Schiena"), ("Trazioni", "Schiena"), ("Lat Machine", "Schiena"),
+            ("Rematore con Bilanciere", "Schiena"), ("Rematore ai Cavi", "Schiena"),
+            ("Military Press", "Spalle"), ("Alzate Laterali", "Spalle"), ("Alzate Frontali", "Spalle"),
+            ("Curl Bilanciere", "Bicipiti"), ("Curl Manubri", "Bicipiti"), ("Curl ai Cavi", "Bicipiti"),
+            ("Tricipiti ai Cavi", "Tricipiti"), ("French Press", "Tricipiti"), ("Estensioni Tricipiti", "Tricipiti"),
+            ("Crunch", "Addominali"), ("Russian Twist", "Addominali"), ("Plank", "Core"),
+        ]
+        defaults.forEach { context.insert(Exercise(name: $0.0, muscleGroup: $0.1)) }
+        try? context.save()
+    }
+
+    func migrateExercisesIfNeeded(context: ModelContext) {
+        let all = (try? context.fetch(FetchDescriptor<Exercise>())) ?? []
+        guard !all.isEmpty else { return }
+
+        // Re-categorise old "Gambe" entries to specific groups
+        let remap: [String: String] = [
+            "Squat": "Quadricipiti", "Leg Press": "Quadricipiti", "Leg Extension": "Quadricipiti",
+            "Front Squat": "Quadricipiti", "Affondi": "Quadricipiti",
+            "Bulgarian Split Squat": "Quadricipiti", "Hack Squat": "Quadricipiti",
+            "Leg Curl": "Femorali", "Leg Curl Prono": "Femorali",
+            "Stacco Rumeno": "Femorali", "Good Morning": "Femorali",
+            "Calf in Piedi": "Polpacci", "Calf Seduto": "Polpacci", "Calf alla Macchina": "Polpacci",
+            "Adduttore alla Macchina": "Adduttori", "Plié Squat": "Adduttori",
+            "Abduttore alla Macchina": "Abduttori", "Clamshell": "Abduttori",
+        ]
+        var changed = false
+        for ex in all {
+            if ex.muscleGroup == "Gambe", let newGroup = remap[ex.name] {
+                ex.muscleGroup = newGroup; changed = true
+            }
+        }
+
+        // Add new exercises that don't exist yet
+        let existing = Set(all.map { $0.name })
+        let newExercises: [(String, String)] = [
+            ("Front Squat", "Quadricipiti"), ("Affondi", "Quadricipiti"),
+            ("Bulgarian Split Squat", "Quadricipiti"), ("Hack Squat", "Quadricipiti"),
+            ("Leg Curl Prono", "Femorali"), ("Stacco Rumeno", "Femorali"), ("Good Morning", "Femorali"),
+            ("Calf Seduto", "Polpacci"), ("Calf alla Macchina", "Polpacci"),
+            ("Adduttore alla Macchina", "Adduttori"), ("Plié Squat", "Adduttori"),
+            ("Abduttore alla Macchina", "Abduttori"), ("Clamshell", "Abduttori"),
+        ]
+        for (name, group) in newExercises where !existing.contains(name) {
+            context.insert(Exercise(name: name, muscleGroup: group)); changed = true
+        }
+
+        if changed { try? context.save() }
+    }
+
+    /// Migrates WorkoutTemplate.exerciseNames → TemplateExercise → TemplateExerciseSet. Idempotent.
+    func migrateTemplateExercisesIfNeeded(context: ModelContext) {
+        let allTemplates = (try? context.fetch(FetchDescriptor<WorkoutTemplate>())) ?? []
+        let allExercises = (try? context.fetch(FetchDescriptor<Exercise>())) ?? []
+        let exerciseMap = Dictionary(allExercises.map { ($0.name, $0) }, uniquingKeysWith: { f, _ in f })
+        var changed = false
+
+        // Pass 1: exerciseNames → TemplateExercise (with scalar fallback values)
+        for tmpl in allTemplates {
+            guard tmpl.templateExercises.isEmpty && !tmpl.exerciseNames.isEmpty else { continue }
+            for (i, name) in tmpl.exerciseNames.enumerated() {
+                let ex = exerciseMap[name]
+                let te = TemplateExercise(exerciseName: name, muscleGroup: ex?.muscleGroup ?? "", orderIndex: i)
+                te.sets = ex?.defaultSets ?? 3
+                te.reps = ex?.defaultReps ?? 10
+                te.weight = ex?.defaultWeight ?? 0
+                te.restSeconds = ex?.defaultRestSeconds ?? 90
+                te.template = tmpl
+                context.insert(te)
+                tmpl.templateExercises.append(te)
+            }
+            changed = true
+        }
+
+        // Pass 2: TemplateExercise with no templateSets → create individual TemplateExerciseSet from scalars
+        let allTEs = (try? context.fetch(FetchDescriptor<TemplateExercise>())) ?? []
+        for te in allTEs {
+            guard te.templateSets.isEmpty else { continue }
+            for j in 0..<max(1, te.sets) {
+                let ts = TemplateExerciseSet(reps: te.reps, weight: te.weight, restSeconds: te.restSeconds, orderIndex: j)
+                ts.templateExercise = te
+                context.insert(ts)
+                te.templateSets.append(ts)
+            }
+            changed = true
+        }
+
+        if changed { try? context.save() }
     }
 
     /// Crea le entry storiche dei target (16 marzo e 10 maggio 2026) se non esistono ancora,

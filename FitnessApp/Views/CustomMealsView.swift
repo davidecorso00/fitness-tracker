@@ -132,6 +132,7 @@ struct CustomMealFormSheet: View {
     @State private var portionsStr: String
     @State private var ingredients: [IngredientDraft]
     @State private var showIngredientPicker = false
+    @State private var showSaveError = false
 
     init(meal: CustomMeal?) {
         self.meal = meal
@@ -285,6 +286,11 @@ struct CustomMealFormSheet: View {
             }
         }
         .presentationBackground(Color.bg)
+        .alert("Errore nel salvataggio", isPresented: $showSaveError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Impossibile salvare il piatto. Riprova.")
+        }
         .sheet(isPresented: $showIngredientPicker) {
             IngredientPickerSheet(allFoods: allFoods) { food, grams in
                 ingredients.append(IngredientDraft(
@@ -307,7 +313,14 @@ struct CustomMealFormSheet: View {
     }
 
     private func save() {
-        let target = meal ?? { let m = CustomMeal(); context.insert(m); return m }()
+        let target: CustomMeal
+        if let existing = meal {
+            target = existing
+        } else {
+            target = CustomMeal()
+            context.insert(target)
+        }
+
         target.name = name
         target.portions = max(Double(portionsStr.replacingOccurrences(of: ",", with: ".")) ?? 1, 0.1)
 
@@ -316,17 +329,28 @@ struct CustomMealFormSheet: View {
 
         for draft in ingredients {
             let ing = CustomMealIngredient()
-            ing.foodName = draft.foodName; ing.grams = draft.grams
-            ing.kcalPer100g = draft.kcalPer100g; ing.proteinPer100g = draft.proteinPer100g
-            ing.carbsPer100g = draft.carbsPer100g; ing.fatPer100g = draft.fatPer100g
-            ing.fiberPer100g = draft.fiberPer100g; ing.sugarPer100g = draft.sugarPer100g
-            ing.saturatedFatPer100g = draft.saturatedFatPer100g; ing.saltPer100g = draft.saltPer100g
-            ing.meal = target; context.insert(ing); target.ingredients.append(ing)
+            context.insert(ing)
+            ing.foodName = draft.foodName
+            ing.grams = draft.grams
+            ing.kcalPer100g = draft.kcalPer100g
+            ing.proteinPer100g = draft.proteinPer100g
+            ing.carbsPer100g = draft.carbsPer100g
+            ing.fatPer100g = draft.fatPer100g
+            ing.fiberPer100g = draft.fiberPer100g
+            ing.sugarPer100g = draft.sugarPer100g
+            ing.saturatedFatPer100g = draft.saturatedFatPer100g
+            ing.saltPer100g = draft.saltPer100g
+            target.ingredients.append(ing)  // SwiftData's inverse: sets ing.meal automatically
         }
 
-        try? context.save()
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        dismiss()
+        do {
+            try context.save()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismiss()
+        } catch {
+            print("⚠️ Salvataggio piatto fallito: \(error)")
+            showSaveError = true
+        }
     }
 }
 
