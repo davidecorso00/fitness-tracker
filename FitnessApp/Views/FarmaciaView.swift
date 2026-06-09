@@ -32,11 +32,19 @@ private enum MedicineNotifications {
     }
 
     // Re-schedules any medicine whose repeating notification was cancelled (e.g. taken yesterday).
-    static func rescheduleIfNeeded(_ medicines: [Medicine]) {
+    // Skips medicines whose doses are all already taken today to avoid re-firing a cancelled reminder.
+    static func rescheduleIfNeeded(_ medicines: [Medicine], doses: [MedicineDose], logs: [MedicineLog], todayKey: String) {
         UNUserNotificationCenter.current().getPendingNotificationRequests { pending in
-            let ids = Set(pending.map { $0.identifier })
+            let pendingIds = Set(pending.map { $0.identifier })
             for med in medicines where med.notificationEnabled {
-                if !ids.contains("farmacia-\(med.stableId)") { schedule(med) }
+                let key = "farmacia-\(med.stableId)"
+                guard !pendingIds.contains(key) else { continue }
+                let medDoses = doses.filter { $0.medicineStableId == med.stableId }
+                let allTaken = !medDoses.isEmpty && medDoses.allSatisfy { d in
+                    logs.first { $0.doseStableId == d.stableId && $0.dayKey == todayKey }?.taken ?? false
+                }
+                if allTaken { continue }
+                schedule(med)
             }
         }
     }
@@ -154,7 +162,8 @@ private struct MedicineChecklistView: View {
         try? context.save()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-        guard markedTaken, let med = medicine(for: dose), med.notificationEnabled else { return }
+        guard markedTaken, dateKey == Date().dateKey,
+              let med = medicine(for: dose), med.notificationEnabled else { return }
         let medDoses = allDoses.filter { $0.medicineStableId == med.stableId }
         let allTaken = medDoses.allSatisfy { d in
             if d.stableId == dose.stableId { return true }
@@ -215,7 +224,11 @@ private struct MedicineChecklistView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 100)
         }
-        .onAppear { MedicineNotifications.rescheduleIfNeeded(allMedicines) }
+        .onAppear {
+            MedicineNotifications.rescheduleIfNeeded(
+                allMedicines, doses: allDoses, logs: allLogs, todayKey: dateKey
+            )
+        }
     }
 }
 

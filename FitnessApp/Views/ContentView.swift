@@ -18,10 +18,33 @@ struct RootView: View {
         .environmentObject(appState)
         .onAppear {
             appState.seedFoodsIfNeeded(context: context)
+            appState.seedExercisesIfNeeded(context: context)
+            appState.migrateExercisesIfNeeded(context: context)
+            appState.migrateTemplateExercisesIfNeeded(context: context)
             appState.setupInitialTargets(context: context)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView().environmentObject(appState)
+        }
+        .sheet(isPresented: Binding(
+            get: { appState.showWorkoutSheet },
+            set: { appState.showWorkoutSheet = $0 }
+        )) {
+            if let session = appState.activeWorkoutSession {
+                WorkoutSessionView(session: session)
+                    .environmentObject(appState)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let session = appState.activeWorkoutSession, !appState.showWorkoutSheet {
+                ActiveWorkoutMiniBar(session: session) {
+                    appState.showWorkoutSheet = true
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 92)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: appState.showWorkoutSheet)
+            }
         }
     }
 
@@ -88,6 +111,38 @@ struct TabMinimizeModifier: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+// MARK: - Active Workout Mini Bar
+
+struct ActiveWorkoutMiniBar: View {
+    var session: ActiveWorkoutSession
+    let onResume: () -> Void
+
+    var body: some View {
+        Button(action: onResume) {
+            HStack(spacing: 12) {
+                Image(systemName: "dumbbell.fill")
+                    .font(.system(size: 15)).foregroundColor(.gymBlue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.templateName)
+                        .font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
+                    Text(session.elapsedDisplay)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.gymBlue)
+                }
+                Spacer()
+                Text("Riprendi")
+                    .font(.system(size: 13, weight: .bold)).foregroundColor(.gymBlue)
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .semibold)).foregroundColor(.gymBlue)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(Color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.gymBlue.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }
 

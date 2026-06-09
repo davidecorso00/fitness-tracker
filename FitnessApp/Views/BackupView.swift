@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Codable structs per export/import
 
 struct BackupData: Codable {
-    var version: Int = 3
+    var version: Int = 4
     var exportDate: Date = Date()
     var foods: [FoodBackup]
     var entries: [EntryBackup]
@@ -14,6 +14,44 @@ struct BackupData: Codable {
     var userProfile: UserProfileBackup?
     var targetHistory: [TargetHistoryBackup]?
     var customMeals: [CustomMealBackup]?
+    var exercises: [ExerciseBackup]?
+    var workoutTemplates: [WorkoutTemplateBackup]?
+    var workoutSessions: [WorkoutSessionBackup]?
+}
+
+struct ExerciseBackup: Codable {
+    var name: String; var muscleGroup: String; var notes: String
+    var defaultSets: Int?; var defaultReps: Int?
+    var defaultWeight: Double?; var defaultRestSeconds: Int?
+}
+
+struct TemplateExerciseSetBackup: Codable {
+    var reps: Int; var weight: Double; var restSeconds: Int; var orderIndex: Int
+}
+
+struct TemplateExerciseBackup: Codable {
+    var exerciseName: String; var muscleGroup: String; var orderIndex: Int
+    var sets: Int?; var reps: Int?; var weight: Double?; var restSeconds: Int?
+    var templateSets: [TemplateExerciseSetBackup]?
+}
+
+struct WorkoutTemplateBackup: Codable {
+    var name: String; var exerciseNames: [String]
+    var templateExercises: [TemplateExerciseBackup]?
+}
+
+struct WorkoutSessionBackup: Codable {
+    var date: Date; var dayKey: String; var templateName: String; var durationMinutes: Int
+    var entries: [WorkoutEntryBackup]
+}
+
+struct WorkoutEntryBackup: Codable {
+    var exerciseName: String; var exerciseMuscleGroup: String; var orderIndex: Int
+    var sets: [WorkoutSetBackup]
+}
+
+struct WorkoutSetBackup: Codable {
+    var reps: Int; var weight: Double; var completed: Bool; var restSeconds: Int; var orderIndex: Int
 }
 
 struct CustomMealBackup: Codable {
@@ -88,6 +126,11 @@ final class BackupManager {
             sortBy: [SortDescriptor(\.effectiveDate)]
         ))) ?? []
         let cMeals  = (try? context.fetch(FetchDescriptor<CustomMeal>())) ?? []
+        let exs     = (try? context.fetch(FetchDescriptor<Exercise>())) ?? []
+        let wTemplates = (try? context.fetch(FetchDescriptor<WorkoutTemplate>())) ?? []
+        let wSessions  = (try? context.fetch(FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date)]
+        ))) ?? []
 
         let backup = BackupData(
             foods: foods.map {
@@ -139,6 +182,35 @@ final class BackupManager {
                             fat: ing.fatPer100g, fiber: ing.fiberPer100g, sugar: ing.sugarPer100g,
                             saturatedFat: ing.saturatedFatPer100g, salt: ing.saltPer100g)
                     })
+            },
+            exercises: exs.map { ExerciseBackup(name: $0.name, muscleGroup: $0.muscleGroup, notes: $0.notes, defaultSets: $0.defaultSets, defaultReps: $0.defaultReps, defaultWeight: $0.defaultWeight, defaultRestSeconds: $0.defaultRestSeconds) },
+            workoutTemplates: wTemplates.map { t in
+                let teBackups = t.templateExercises.sorted { $0.orderIndex < $1.orderIndex }.map { te in
+                    let tsBackups = te.templateSets.sorted { $0.orderIndex < $1.orderIndex }.map { ts in
+                        TemplateExerciseSetBackup(reps: ts.reps, weight: ts.weight, restSeconds: ts.restSeconds, orderIndex: ts.orderIndex)
+                    }
+                    return TemplateExerciseBackup(exerciseName: te.exerciseName, muscleGroup: te.muscleGroup,
+                        orderIndex: te.orderIndex, sets: te.sets, reps: te.reps,
+                        weight: te.weight, restSeconds: te.restSeconds, templateSets: tsBackups)
+                }
+                return WorkoutTemplateBackup(name: t.name, exerciseNames: t.exerciseNames, templateExercises: teBackups)
+            },
+            workoutSessions: wSessions.map { sess in
+                WorkoutSessionBackup(
+                    date: sess.date, dayKey: sess.dayKey,
+                    templateName: sess.templateName, durationMinutes: sess.durationMinutes,
+                    entries: sess.entries.sorted { $0.orderIndex < $1.orderIndex }.map { entry in
+                        WorkoutEntryBackup(
+                            exerciseName: entry.exerciseName,
+                            exerciseMuscleGroup: entry.exerciseMuscleGroup,
+                            orderIndex: entry.orderIndex,
+                            sets: entry.sets.sorted { $0.orderIndex < $1.orderIndex }.map { ws in
+                                WorkoutSetBackup(reps: ws.reps, weight: ws.weight, completed: ws.completed,
+                                                 restSeconds: ws.restSeconds, orderIndex: ws.orderIndex)
+                            }
+                        )
+                    }
+                )
             }
         )
 
@@ -162,6 +234,13 @@ final class BackupManager {
         try context.delete(model: TargetHistory.self)
         try context.delete(model: CustomMeal.self)
         try context.delete(model: CustomMealIngredient.self)
+        try context.delete(model: Exercise.self)
+        try context.delete(model: TemplateExerciseSet.self)
+        try context.delete(model: TemplateExercise.self)
+        try context.delete(model: WorkoutTemplate.self)
+        try context.delete(model: WorkoutSession.self)
+        try context.delete(model: WorkoutEntry.self)
+        try context.delete(model: WorkoutSet.self)
 
         for f in backup.foods {
             context.insert(FoodItem(name: f.name, kcalPer100g: f.kcal, proteinPer100g: f.protein,
@@ -244,6 +323,54 @@ final class BackupManager {
                 ing.saturatedFatPer100g = bi.saturatedFat; ing.saltPer100g = bi.salt
                 ing.meal = meal; context.insert(ing)
                 meal.ingredients.append(ing)
+            }
+        }
+
+        for ex in backup.exercises ?? [] {
+            let e = Exercise(name: ex.name, muscleGroup: ex.muscleGroup, notes: ex.notes)
+            if let s = ex.defaultSets { e.defaultSets = s }
+            if let r = ex.defaultReps { e.defaultReps = r }
+            if let w = ex.defaultWeight { e.defaultWeight = w }
+            if let rest = ex.defaultRestSeconds { e.defaultRestSeconds = rest }
+            context.insert(e)
+        }
+
+        for t in backup.workoutTemplates ?? [] {
+            let tmpl = WorkoutTemplate(name: t.name)
+            tmpl.exerciseNames = t.exerciseNames
+            context.insert(tmpl)
+            let teList = t.templateExercises ?? []
+            for te in teList {
+                let newTE = TemplateExercise(exerciseName: te.exerciseName, muscleGroup: te.muscleGroup, orderIndex: te.orderIndex)
+                if let s = te.sets { newTE.sets = s }
+                if let r = te.reps { newTE.reps = r }
+                if let w = te.weight { newTE.weight = w }
+                if let rest = te.restSeconds { newTE.restSeconds = rest }
+                newTE.template = tmpl
+                context.insert(newTE)
+                tmpl.templateExercises.append(newTE)
+                for ts in te.templateSets ?? [] {
+                    let newTS = TemplateExerciseSet(reps: ts.reps, weight: ts.weight, restSeconds: ts.restSeconds, orderIndex: ts.orderIndex)
+                    newTS.templateExercise = newTE
+                    context.insert(newTS)
+                    newTE.templateSets.append(newTS)
+                }
+            }
+        }
+
+        for s in backup.workoutSessions ?? [] {
+            let sess = WorkoutSession(date: s.date, templateName: s.templateName)
+            sess.dayKey = s.dayKey; sess.durationMinutes = s.durationMinutes
+            context.insert(sess)
+            for e in s.entries {
+                let entry = WorkoutEntry(exerciseName: e.exerciseName,
+                                        exerciseMuscleGroup: e.exerciseMuscleGroup, orderIndex: e.orderIndex)
+                entry.session = sess; context.insert(entry); sess.entries.append(entry)
+                for ws in e.sets {
+                    let wset = WorkoutSet(reps: ws.reps, weight: ws.weight, completed: ws.completed,
+                                         restSeconds: ws.restSeconds, orderIndex: ws.orderIndex)
+                    wset.entry = entry; context.insert(wset); entry.sets.append(wset)
+                }
             }
         }
 

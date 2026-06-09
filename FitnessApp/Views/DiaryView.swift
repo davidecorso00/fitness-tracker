@@ -72,8 +72,19 @@ struct MealSection: View {
 
     @Query private var allEntries: [FoodEntry]
 
+    init(meal: MealType, dateKey: String, editingEntry: Binding<FoodEntry?>, onAdd: @escaping () -> Void) {
+        self.meal = meal
+        self.dateKey = dateKey
+        self._editingEntry = editingEntry
+        self.onAdd = onAdd
+        _allEntries = Query(
+            filter: #Predicate<FoodEntry> { $0.dayKey == dateKey },
+            sort: \.date
+        )
+    }
+
     var entries: [FoodEntry] {
-        allEntries.filter { $0.dayKey == dateKey && $0.meal == meal }
+        allEntries.filter { $0.meal == meal }
     }
     var mealKcal: Double { entries.reduce(0) { $0 + $1.kcalSnapshot } }
 

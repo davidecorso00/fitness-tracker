@@ -418,6 +418,97 @@ func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -
     }
 }
 
+// MARK: - Workout Models
+
+@Model final class Exercise {
+    var name: String = ""
+    var muscleGroup: String = ""
+    var notes: String = ""
+    var defaultSets: Int = 3
+    var defaultReps: Int = 10
+    var defaultWeight: Double = 0.0
+    var defaultRestSeconds: Int = 90
+    init(name: String = "", muscleGroup: String = "", notes: String = "") {
+        self.name = name; self.muscleGroup = muscleGroup; self.notes = notes
+    }
+}
+
+@Model final class WorkoutTemplate {
+    var name: String = ""
+    var exerciseNames: [String] = []  // kept for migration; authoritative source is templateExercises
+    var createdAt: Date = Date()
+    var sortOrder: Int = 0
+    @Relationship(deleteRule: .cascade, inverse: \TemplateExercise.template)
+    var templateExercises: [TemplateExercise] = []
+    init(name: String = "") { self.name = name }
+}
+
+@Model final class WorkoutSession {
+    var date: Date = Date()
+    var dayKey: String = ""
+    var templateName: String = ""
+    var durationMinutes: Int = 0
+    @Relationship(deleteRule: .cascade, inverse: \WorkoutEntry.session)
+    var entries: [WorkoutEntry] = []
+    init(date: Date = Date(), templateName: String = "") {
+        self.date = date; self.dayKey = date.dateKey; self.templateName = templateName
+    }
+}
+
+@Model final class WorkoutEntry {
+    var exerciseName: String = ""
+    var exerciseMuscleGroup: String = ""
+    var orderIndex: Int = 0
+    var session: WorkoutSession?
+    @Relationship(deleteRule: .cascade, inverse: \WorkoutSet.entry)
+    var sets: [WorkoutSet] = []
+    init(exerciseName: String = "", exerciseMuscleGroup: String = "", orderIndex: Int = 0) {
+        self.exerciseName = exerciseName; self.exerciseMuscleGroup = exerciseMuscleGroup
+        self.orderIndex = orderIndex
+    }
+}
+
+@Model final class WorkoutSet {
+    var reps: Int = 0
+    var weight: Double = 0.0
+    var completed: Bool = false
+    var restSeconds: Int = 90
+    var orderIndex: Int = 0
+    var entry: WorkoutEntry?
+    init(reps: Int = 0, weight: Double = 0, completed: Bool = false,
+         restSeconds: Int = 90, orderIndex: Int = 0) {
+        self.reps = reps; self.weight = weight; self.completed = completed
+        self.restSeconds = restSeconds; self.orderIndex = orderIndex
+    }
+}
+
+@Model final class TemplateExercise {
+    var exerciseName: String = ""
+    var muscleGroup: String = ""
+    var orderIndex: Int = 0
+    var sets: Int = 3       // legacy scalar (used as fallback when templateSets is empty)
+    var reps: Int = 10      // legacy scalar
+    var weight: Double = 0.0  // legacy scalar
+    var restSeconds: Int = 90 // legacy scalar
+    var template: WorkoutTemplate?
+    @Relationship(deleteRule: .cascade, inverse: \TemplateExerciseSet.templateExercise)
+    var templateSets: [TemplateExerciseSet] = []
+    init(exerciseName: String = "", muscleGroup: String = "", orderIndex: Int = 0) {
+        self.exerciseName = exerciseName; self.muscleGroup = muscleGroup; self.orderIndex = orderIndex
+    }
+}
+
+@Model final class TemplateExerciseSet {
+    var reps: Int = 10
+    var weight: Double = 0.0
+    var restSeconds: Int = 90
+    var orderIndex: Int = 0
+    var templateExercise: TemplateExercise?
+    init(reps: Int = 10, weight: Double = 0, restSeconds: Int = 90, orderIndex: Int = 0) {
+        self.reps = reps; self.weight = weight; self.restSeconds = restSeconds; self.orderIndex = orderIndex
+    }
+}
+
 // MARK: - Date Helpers
 
 extension Date {

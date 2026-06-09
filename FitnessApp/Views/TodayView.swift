@@ -6,7 +6,7 @@ struct TodayView: View {
     @EnvironmentObject private var appState: AppState
     @Binding var showSettings: Bool
 
-    @Query private var allLogs: [DayLog]
+    @Query(sort: \DayLog.dateKey, order: .reverse) private var allLogs: [DayLog]
     @Query private var allEntries: [FoodEntry]
     @Query private var allSports: [SportEntry]
     @Query private var allLimits: [AppLimits]
@@ -16,6 +16,7 @@ struct TodayView: View {
     @State private var weightInput: String = ""
     @State private var appeared: Bool      = false
     @State private var showAddSport: Bool  = false
+    @State private var deficitStreak: Int  = 0
 
     private var currentKey: String { appState.currentDateKey }
     private var isFuture: Bool     { appState.currentDate.isFuture }
@@ -51,30 +52,21 @@ struct TodayView: View {
         todaySports.reduce(0.0) { $0 + $1.kcalBurned }
     }
 
-    private var deficitStreak: Int { calcDeficitStreak() }
-
     // ── BMR helpers ──────────────────────────────────────────────────────
 
-    private func weightOnOrBefore(dateKey: String) -> Double? {
-        allLogs
-            .filter { $0.dateKey <= dateKey && $0.weight != nil }
-            .max(by: { $0.dateKey < $1.dateKey })?
-            .weight
-    }
-
-    private func totalDailyBurn(dateKey: String, date: Date, extraSport: Double) -> Double {
-        let log          = allLogs.first { $0.dateKey == dateKey }
+    private func totalDailyBurn(dateKey: String, date: Date, extraSport: Double,
+                                 logByDay: [String: DayLog], weightByDay: [String: Double]) -> Double {
+        let log          = logByDay[dateKey]
         let activityKcal = Double(log?.burnedKcal ?? 0) + extraSport
 
         if let profile = allProfiles.first,
            let heightCm = profile.heightCm,
            let birthDate = profile.birthDate,
-           let w = weightOnOrBefore(dateKey: dateKey), w > 0 {
+           let w = weightByDay[dateKey], w > 0 {
             let age = Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
             let bmr = calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
             return bmr + activityKcal
         }
-
         return activityKcal
     }
 
@@ -88,39 +80,45 @@ struct TodayView: View {
         return calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
     }
 
-    private func calcDeficitStreak() -> Int {
+    // O(1) lookup on reverse-sorted allLogs
+    private var lastKnownWeight: Double? {
+        let todayKey = Calendar.current.startOfDay(for: Date()).dateKey
+        return allLogs.first { $0.dateKey < todayKey && $0.weight != nil }?.weight
+    }
+
+    private func refreshStreak() {
+        // Pre-build O(n) dicts so the 365-day loop uses O(1) lookups
+        let kcalByDay   = allEntries.reduce(into: [String: Double]()) { $0[$1.dayKey, default: 0] += $1.kcalSnapshot }
+        let sportByDay  = allSports.reduce(into: [String: Double]())  { $0[$1.dayKey, default: 0] += $1.kcalBurned }
+        // Build running last-known-weight per day (allLogs is sorted reverse; reverse again for forward pass)
+        var weightByDay = [String: Double]()
+        var lastW: Double? = nil
+        for log in allLogs.reversed() {
+            if let w = log.weight { lastW = w }
+            if let w = lastW { weightByDay[log.dateKey] = w }
+        }
+        let logByDay = allLogs.reduce(into: [String: DayLog]()) { $0[$1.dateKey] = $1 }
+
         var streak = 0
         var date = Calendar.current.startOfDay(for: Date())
         for _ in 0..<365 {
             let key   = date.dateKey
-            let eaten = kcalEaten(for: key)
+            let eaten = kcalByDay[key] ?? 0
             guard eaten > 0 else {
                 if date.isToday { date = date.adding(days: -1); continue }
                 break
             }
-            let sportKcal = allSports.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalBurned }
-            let burned = totalDailyBurn(dateKey: key, date: date, extraSport: sportKcal)
+            let sportKcal = sportByDay[key] ?? 0
+            let burned = totalDailyBurn(dateKey: key, date: date, extraSport: sportKcal,
+                                        logByDay: logByDay, weightByDay: weightByDay)
             if eaten < burned { streak += 1 } else { break }
             date = date.adding(days: -1)
         }
-        return streak
+        deficitStreak = streak
     }
 
     private func kcalEaten(for key: String) -> Double {
         allEntries.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalSnapshot }
-    }
-
-    private var lastKnownWeight: Double? {
-        let today = Calendar.current.startOfDay(for: Date())
-        var date = today.adding(days: -1)
-        for _ in 0..<90 {
-            let key = date.dateKey
-            if let log = allLogs.first(where: { $0.dateKey == key }), let w = log.weight {
-                return w
-            }
-            date = date.adding(days: -1)
-        }
-        return nil
     }
 
     private var todayWaterTotal: Double {
@@ -318,6 +316,7 @@ struct TodayView: View {
             withAnimation(.easeOut(duration: 0.8).delay(0.2)) { appeared = true }
             appState.syncHealthKit(for: appState.currentDate, context: context)
             writeWidgetData()
+            refreshStreak()
         }
         .onChange(of: appState.currentDate) {
             appeared = false
@@ -326,7 +325,9 @@ struct TodayView: View {
             appState.syncHealthKit(for: appState.currentDate, context: context)
         }
         .onChange(of: dayLog?.weight) { syncInputFields() }
-        .onChange(of: allEntries.count) { writeWidgetData() }
+        .onChange(of: allEntries.count) { writeWidgetData(); refreshStreak() }
+        .onChange(of: allSports.count) { refreshStreak() }
+        .onChange(of: allLogs.count) { refreshStreak() }
         .onChange(of: todayWaterTotal) { writeWidgetData() }
         .onChange(of: todaySteps) { writeWidgetData() }
     }
