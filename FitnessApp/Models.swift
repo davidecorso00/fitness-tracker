@@ -521,6 +521,12 @@ struct RoutePoint: Codable {
     var seg: Int
 }
 
+/// Campione di battito cardiaco: `t` = secondi dall'inizio corsa, `bpm` = battiti/min.
+struct HRPoint: Codable {
+    var t: Double
+    var bpm: Double
+}
+
 @Model final class RunSession {
     var date: Date = Date()
     var dayKey: String = ""
@@ -528,17 +534,24 @@ struct RoutePoint: Codable {
     var durationSeconds: Double = 0      // tempo attivo, pause escluse
     var kcalBurned: Double = 0
     var splitSeconds: [Double] = []      // secondi impiegati per ogni km completato
+    var avgHeartRate: Double = 0         // 0 = nessun dato (niente Watch al polso)
+    var maxHeartRate: Double = 0
     @Attribute(.externalStorage) var routeData: Data = Data()
+    @Attribute(.externalStorage) var heartRateData: Data = Data()
 
     init(date: Date = Date(), distanceMeters: Double = 0, durationSeconds: Double = 0,
-         kcalBurned: Double = 0, splitSeconds: [Double] = [], route: [RoutePoint] = []) {
+         kcalBurned: Double = 0, splitSeconds: [Double] = [], route: [RoutePoint] = [],
+         avgHeartRate: Double = 0, maxHeartRate: Double = 0, hrSeries: [HRPoint] = []) {
         self.date = date
         self.dayKey = date.dateKey
         self.distanceMeters = distanceMeters
         self.durationSeconds = durationSeconds
         self.kcalBurned = kcalBurned
         self.splitSeconds = splitSeconds
+        self.avgHeartRate = avgHeartRate
+        self.maxHeartRate = maxHeartRate
         self.routeData = (try? JSONEncoder().encode(route)) ?? Data()
+        self.heartRateData = (try? JSONEncoder().encode(hrSeries)) ?? Data()
     }
 
     var distanceKm: Double { distanceMeters / 1000 }
@@ -551,6 +564,10 @@ struct RoutePoint: Codable {
 
     var routePoints: [RoutePoint] {
         (try? JSONDecoder().decode([RoutePoint].self, from: routeData)) ?? []
+    }
+
+    var hrPoints: [HRPoint] {
+        (try? JSONDecoder().decode([HRPoint].self, from: heartRateData)) ?? []
     }
 }
 

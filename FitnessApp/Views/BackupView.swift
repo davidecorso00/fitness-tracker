@@ -25,6 +25,8 @@ struct RunSessionBackup: Codable {
     var distanceMeters: Double; var durationSeconds: Double; var kcalBurned: Double
     var splitSeconds: [Double]
     var route: [RoutePoint]
+    var avgHeartRate: Double?; var maxHeartRate: Double?
+    var heartRate: [HRPoint]?
 }
 
 struct ExerciseBackup: Codable {
@@ -229,7 +231,10 @@ final class BackupManager {
                 RunSessionBackup(date: $0.date, dayKey: $0.dayKey,
                     distanceMeters: $0.distanceMeters, durationSeconds: $0.durationSeconds,
                     kcalBurned: $0.kcalBurned, splitSeconds: $0.splitSeconds,
-                    route: $0.routePoints)
+                    route: $0.routePoints,
+                    avgHeartRate: $0.avgHeartRate > 0 ? $0.avgHeartRate : nil,
+                    maxHeartRate: $0.maxHeartRate > 0 ? $0.maxHeartRate : nil,
+                    heartRate: $0.hrPoints.isEmpty ? nil : $0.hrPoints)
             }
         )
 
@@ -398,7 +403,10 @@ final class BackupManager {
         for r in backup.runSessions ?? [] {
             let run = RunSession(date: r.date, distanceMeters: r.distanceMeters,
                                  durationSeconds: r.durationSeconds, kcalBurned: r.kcalBurned,
-                                 splitSeconds: r.splitSeconds, route: r.route)
+                                 splitSeconds: r.splitSeconds, route: r.route,
+                                 avgHeartRate: r.avgHeartRate ?? 0,
+                                 maxHeartRate: r.maxHeartRate ?? 0,
+                                 hrSeries: r.heartRate ?? [])
             run.dayKey = r.dayKey
             context.insert(run)
         }

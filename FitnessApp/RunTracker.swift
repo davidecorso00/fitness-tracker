@@ -1,10 +1,34 @@
 import Foundation
 import Combine
 import CoreLocation
+import HealthKit
 import UIKit
+import UserNotifications
 #if canImport(ActivityKit) && os(iOS)
 import ActivityKit
 #endif
+
+// MARK: - Fasi (cicli tipo 4x4 norvegese)
+
+struct RunPhase {
+    let name: String        // es. "Lavoro 2/4"
+    let isWork: Bool
+    let duration: Double    // secondi
+
+    /// Costruisce il piano: rounds × (lavoro + recupero), senza recupero finale.
+    static func plan(rounds: Int, workMinutes: Int, restMinutes: Int) -> [RunPhase] {
+        var phases: [RunPhase] = []
+        for r in 1...max(rounds, 1) {
+            phases.append(RunPhase(name: "Lavoro \(r)/\(rounds)", isWork: true,
+                                   duration: Double(workMinutes * 60)))
+            if r < rounds {
+                phases.append(RunPhase(name: "Recupero \(r)/\(rounds - 1)", isWork: false,
+                                       duration: Double(restMinutes * 60)))
+            }
+        }
+        return phases
+    }
+}
 
 // MARK: - Run Tracker
 //
@@ -28,12 +52,20 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
     @Published var route: [RoutePoint] = []
     @Published var splitSeconds: [Double] = []
     @Published var permissionDenied = false
+    @Published var currentBPM: Double?    // ultimo campione dal Watch via HealthKit
+    @Published var currentPhaseIndex: Int = 0
 
     let startDate = Date()
+    let phases: [RunPhase]                // vuoto = corsa libera
     private let weightKg: Double
+    private let notifyEveryKm: Bool
+    private let notifyEveryMinutes: Int   // 0 = disattivato
 
     private let manager = CLLocationManager()
     private var uiTimer: Timer?
+    private let healthKit = HealthKitManager()
+    private var hrQuery: HKQuery?
+    private var lastMinuteNotified = 0
 
     private var pausedTotal: Double = 0           // secondi totali in pausa
     private var pauseStartedAt: Date?
@@ -51,14 +83,35 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         return elapsed / (distanceMeters / 1000)
     }
 
-    init(weightKg: Double) {
+    // ── Fasi correnti ─────────────────────────────────────────────────────
+
+    var currentPhase: RunPhase? {
+        guard !phases.isEmpty, currentPhaseIndex < phases.count else { return nil }
+        return phases[currentPhaseIndex]
+    }
+
+    /// Secondi mancanti alla fine della fase corrente (nil in corsa libera o a piano finito)
+    var phaseRemaining: Double? {
+        guard !phases.isEmpty, currentPhaseIndex < phases.count else { return nil }
+        let phaseStart = phases.prefix(currentPhaseIndex).reduce(0) { $0 + $1.duration }
+        return max(phases[currentPhaseIndex].duration - (elapsed - phaseStart), 0)
+    }
+
+    init(weightKg: Double, phases: [RunPhase] = [],
+         notifyEveryKm: Bool = false, notifyEveryMinutes: Int = 0) {
         self.weightKg = weightKg > 0 ? weightKg : 70
+        self.phases = phases
+        self.notifyEveryKm = notifyEveryKm
+        self.notifyEveryMinutes = notifyEveryMinutes
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.activityType = .fitness
         manager.distanceFilter = 5
         manager.pausesLocationUpdatesAutomatically = false
+        if !phases.isEmpty || notifyEveryKm || notifyEveryMinutes > 0 {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        }
     }
 
     func start() {
@@ -72,6 +125,19 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         }
         startUITimer()
         startLiveActivity()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.healthKit.requestAuthorization()
+            self.hrQuery = self.healthKit.startHeartRateStream { [weak self] bpm in
+                self?.currentBPM = bpm
+            }
+        }
+    }
+
+    /// Media/max/serie battiti dell'intera corsa (best effort: i campioni del
+    /// Watch possono arrivare sul telefono con qualche minuto di ritardo).
+    func finalHeartRateStats() async -> (avg: Double, max: Double, series: [HRPoint]) {
+        await healthKit.fetchHeartRateStats(from: startDate, to: Date())
     }
 
     func pause() {
@@ -111,6 +177,8 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         manager.allowsBackgroundLocationUpdates = false
         uiTimer?.invalidate()
         uiTimer = nil
+        healthKit.stopQuery(hrQuery)
+        hrQuery = nil
         endLiveActivity()
     }
 
@@ -132,6 +200,61 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
     private func refreshElapsed() {
         guard state == .running || state == .waitingGPS else { return }
         elapsed = Date().timeIntervalSince(startDate) - pausedTotal
+        checkPhaseTransition()
+        checkMinuteNotification()
+    }
+
+    // ── Fasi e notifiche periodiche ───────────────────────────────────────
+    // Chiamati da refreshElapsed, che gira sia col timer (foreground) sia a
+    // ogni callback GPS (background): funzionano anche a schermo bloccato.
+
+    private func checkPhaseTransition() {
+        guard !phases.isEmpty else { return }
+        var acc = 0.0
+        var index = phases.count   // oltre l'ultima fase = piano completato
+        for (i, p) in phases.enumerated() {
+            acc += p.duration
+            if elapsed < acc { index = i; break }
+        }
+        guard index != currentPhaseIndex else { return }
+        currentPhaseIndex = index
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        if index < phases.count {
+            let p = phases[index]
+            sendNotification(title: p.isWork ? "🔥 \(p.name)" : "💨 \(p.name)",
+                             body: "\(durationString(p.duration)) · \(statsLine())")
+        } else {
+            sendNotification(title: "✅ Cicli completati",
+                             body: "Continua pure a correre · \(statsLine())")
+        }
+        pushLiveActivity(force: true)
+    }
+
+    private func checkMinuteNotification() {
+        guard notifyEveryMinutes > 0 else { return }
+        let minute = Int(elapsed) / 60
+        guard minute > lastMinuteNotified, minute % notifyEveryMinutes == 0 else { return }
+        lastMinuteNotified = minute
+        sendNotification(title: "⏱ \(minute) min", body: statsLine())
+    }
+
+    private func statsLine() -> String {
+        var parts = [String(format: "%.2f km", distanceMeters / 1000),
+                     durationString(elapsed),
+                     paceString(avgPaceSecPerKm) + " /km"]
+        if let bpm = currentBPM { parts.append("♥ \(Int(bpm))") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Notifica locale immediata: con il telefono in tasca arriva al polso (Watch).
+    private func sendNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString,
+                                            content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 
     fileprivate func handleAuthorization(_ status: CLAuthorizationStatus) {
@@ -193,6 +316,11 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
             lastSplitElapsed = elapsed
             nextSplitMeters += 1000
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if notifyEveryKm {
+                let km = splitSeconds.count
+                sendNotification(title: "📍 Km \(km)",
+                                 body: "Ultimo km in \(paceString(splitSeconds.last)) · \(statsLine())")
+            }
             pushLiveActivity(force: true)
         }
     }
@@ -210,7 +338,9 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
             elapsedAtPause: elapsed,
             distanceMeters: distanceMeters,
             avgPaceSecPerKm: avgPaceSecPerKm,
-            kcal: kcal)
+            kcal: kcal,
+            bpm: currentBPM,
+            phaseName: currentPhaseIndex < phases.count ? phases[currentPhaseIndex].name : nil)
     }
 
     private func startLiveActivity() {

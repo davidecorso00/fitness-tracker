@@ -13,6 +13,8 @@ struct RunActivityAttributes: ActivityAttributes {
         var distanceMeters: Double
         var avgPaceSecPerKm: Double?
         var kcal: Double
+        var bpm: Double?
+        var phaseName: String?
     }
 }
 
@@ -31,6 +33,7 @@ private let runCyan    = Color(red: 100/255, green: 210/255, blue: 255/255)
 private let restOrange = Color(red: 255/255, green: 159/255, blue: 10/255)
 private let kcalRed    = Color(red: 250/255, green: 17/255, blue: 79/255)
 private let paceGreen  = Color(red: 146/255, green: 232/255, blue: 42/255)
+private let hrPink     = Color(red: 255/255, green: 55/255, blue: 95/255)
 
 private func activityPaceString(_ secPerKm: Double?) -> String {
     guard let p = secPerKm, p.isFinite, p > 0, p < 3600 else { return "—" }
@@ -67,33 +70,9 @@ private struct RunChronoText: View {
 struct RunLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RunActivityAttributes.self) { context in
-            // ── Schermata di blocco ──────────────────────────────────────
-            HStack(spacing: 14) {
-                Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(runCyan)
-                    .frame(width: 44, height: 44)
-                    .background(runCyan.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    RunChronoText(state: context.state,
-                                  font: .system(size: 28, weight: .bold, design: .rounded))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(runCyan)
-                }
-
-                VStack(alignment: .trailing, spacing: 6) {
-                    activityMetric(value: activityPaceString(context.state.avgPaceSecPerKm),
-                                   label: "/km", color: paceGreen)
-                    activityMetric(value: "\(Int(context.state.kcal))",
-                                   label: "kcal", color: kcalRed)
-                }
-            }
-            .padding(16)
-            .activityBackgroundTint(activityBg)
-            .activitySystemActionForegroundColor(.white)
+            RunActivityLockView(context: context)
+                .activityBackgroundTint(activityBg)
+                .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
                 // ── Espanso ──────────────────────────────────────────────
@@ -123,6 +102,9 @@ struct RunLiveActivity: Widget {
                     HStack {
                         expandedStat(value: activityPaceString(context.state.avgPaceSecPerKm),
                                      label: "PASSO MEDIO", color: paceGreen)
+                        if let bpm = context.state.bpm {
+                            expandedStat(value: "\(Int(bpm))", label: "BPM", color: hrPink)
+                        }
                         expandedStat(value: "\(Int(context.state.kcal))",
                                      label: "KCAL", color: kcalRed)
                     }
@@ -142,17 +124,7 @@ struct RunLiveActivity: Widget {
             }
             .keylineTint(runCyan)
         }
-    }
-
-    private func activityMetric(value: String, label: String, color: Color) -> some View {
-        HStack(spacing: 3) {
-            Text(value)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .monospacedDigit().foregroundStyle(color)
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.4))
-        }
+        .supplementalActivityFamilies([.small])   // Smart Stack su Apple Watch (watchOS 11+)
     }
 
     private func expandedStat(value: String, label: String, color: Color) -> some View {
@@ -166,6 +138,103 @@ struct RunLiveActivity: Widget {
                 .foregroundStyle(.white.opacity(0.4))
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Vista lock screen / Smart Stack della corsa
+
+private struct RunActivityLockView: View {
+    @Environment(\.activityFamily) private var family
+    let context: ActivityViewContext<RunActivityAttributes>
+
+    var body: some View {
+        if family == .small {
+            watchView
+        } else {
+            lockScreenView
+        }
+    }
+
+    // Smart Stack del Watch: tempo, km e battiti — i tre dati chiave al polso
+    private var watchView: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(runCyan)
+                    if let phase = context.state.phaseName {
+                        Text(phase)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                }
+                RunChronoText(state: context.state,
+                              font: .system(size: 26, weight: .bold, design: .rounded))
+            }
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .monospacedDigit().foregroundStyle(runCyan)
+                if let bpm = context.state.bpm {
+                    HStack(spacing: 2) {
+                        Image(systemName: "heart.fill").font(.system(size: 9))
+                        Text("\(Int(bpm))")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(hrPink)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var lockScreenView: some View {
+        HStack(spacing: 14) {
+            Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(runCyan)
+                .frame(width: 44, height: 44)
+                .background(runCyan.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                if let phase = context.state.phaseName {
+                    Text(phase)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                RunChronoText(state: context.state,
+                              font: .system(size: 28, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(runCyan)
+            }
+
+            VStack(alignment: .trailing, spacing: 5) {
+                metric(value: activityPaceString(context.state.avgPaceSecPerKm),
+                       label: "/km", color: paceGreen)
+                if let bpm = context.state.bpm {
+                    metric(value: "\(Int(bpm))", label: "♥", color: hrPink)
+                }
+                metric(value: "\(Int(context.state.kcal))", label: "kcal", color: kcalRed)
+            }
+        }
+        .padding(16)
+    }
+
+    private func metric(value: String, label: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .monospacedDigit().foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.4))
+        }
     }
 }
 

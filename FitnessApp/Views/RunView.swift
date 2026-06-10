@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import MapKit
+import Charts
 
 // Accent della sezione corsa
 private let runAccent = Color.gymCyan
@@ -19,6 +20,14 @@ struct RunView: View {
 
     @State private var tracker: RunTracker?
     @State private var detailRun: RunSession?
+
+    // Impostazioni corsa (persistono tra sessioni)
+    @AppStorage("runModeIntervals") private var intervalsMode = false
+    @AppStorage("runIntervalRounds") private var intervalRounds = 4
+    @AppStorage("runIntervalWork") private var intervalWork = 4      // minuti
+    @AppStorage("runIntervalRest") private var intervalRest = 3      // minuti
+    @AppStorage("runNotifyKm") private var notifyKm = true
+    @AppStorage("runNotifyMinutes") private var notifyMinutes = 0    // 0 = off
 
     private var lastKnownWeight: Double {
         allLogs.first { $0.weight != nil }?.weight ?? 70
@@ -53,6 +62,9 @@ struct RunView: View {
                             .background(runGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         }
                         .buttonStyle(.plain)
+
+                        // Impostazioni corsa: cicli e notifiche
+                        runSetupCard
 
                         // Obiettivo settimanale
                         if let target = allLimits.first?.weeklyRunKmTarget, target > 0 {
@@ -98,8 +110,93 @@ struct RunView: View {
         }
     }
 
+    // ── Impostazioni corsa ────────────────────────────────────────────────
+
+    private var runSetupCard: some View {
+        HTCard {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel(text: "Modalità")
+                Picker("Modalità", selection: $intervalsMode) {
+                    Text("Libera").tag(false)
+                    Text("Cicli").tag(true)
+                }
+                .pickerStyle(.segmented)
+
+                if intervalsMode {
+                    VStack(spacing: 8) {
+                        setupStepper(label: "Ripetizioni", value: $intervalRounds, range: 1...12, unit: "×")
+                        setupStepper(label: "Lavoro", value: $intervalWork, range: 1...30, unit: "min")
+                        setupStepper(label: "Recupero", value: $intervalRest, range: 1...30, unit: "min")
+                        Text("\(intervalRounds) × (\(intervalWork)' lavoro + \(intervalRest)' recupero) — es. norvegese 4×4")
+                            .font(.system(size: 11)).foregroundColor(.muted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, 2)
+                }
+
+                Rectangle().fill(Color.brd).frame(height: 0.5)
+
+                SectionLabel(text: "Notifiche durante la corsa")
+                Toggle(isOn: $notifyKm) {
+                    Text("Ogni chilometro")
+                        .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
+                }
+                .tint(runAccent)
+                HStack {
+                    Text("Ogni N minuti")
+                        .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
+                    Spacer()
+                    Picker("", selection: $notifyMinutes) {
+                        Text("Off").tag(0)
+                        Text("1").tag(1)
+                        Text("5").tag(5)
+                        Text("10").tag(10)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 180)
+                }
+                Text("Con il telefono in tasca le notifiche arrivano sull'Apple Watch.")
+                    .font(.system(size: 11)).foregroundColor(.muted)
+            }
+        }
+    }
+
+    private func setupStepper(label: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
+            Spacer()
+            HStack(spacing: 14) {
+                stepBtn(icon: "minus") {
+                    if value.wrappedValue > range.lowerBound { value.wrappedValue -= 1 }
+                }
+                Text("\(value.wrappedValue) \(unit)")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .monospacedDigit().foregroundColor(runAccent)
+                    .frame(width: 64)
+                stepBtn(icon: "plus") {
+                    if value.wrappedValue < range.upperBound { value.wrappedValue += 1 }
+                }
+            }
+        }
+    }
+
+    private func stepBtn(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold)).foregroundColor(.txt)
+                .frame(width: 30, height: 30)
+                .background(Color.white.opacity(0.08), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func startRun() {
-        let t = RunTracker(weightKg: lastKnownWeight)
+        let phases = intervalsMode
+            ? RunPhase.plan(rounds: intervalRounds, workMinutes: intervalWork, restMinutes: intervalRest)
+            : []
+        let t = RunTracker(weightKg: lastKnownWeight, phases: phases,
+                           notifyEveryKm: notifyKm, notifyEveryMinutes: notifyMinutes)
         t.start()
         tracker = t
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -108,14 +205,21 @@ struct RunView: View {
     private func endRun(save: Bool) {
         guard let t = tracker else { return }
         t.finish()
-        var saved: RunSession?
-        if save, t.distanceMeters > 10 {
+        let shouldSave = save && t.distanceMeters > 10
+        tracker = nil   // dismissa il fullScreenCover
+        guard shouldSave else { return }
+
+        Task { @MainActor in
+            let hr = await t.finalHeartRateStats()
             let run = RunSession(date: t.startDate,
                                  distanceMeters: t.distanceMeters,
                                  durationSeconds: t.elapsed,
                                  kcalBurned: t.kcal,
                                  splitSeconds: t.splitSeconds,
-                                 route: t.route)
+                                 route: t.route,
+                                 avgHeartRate: hr.avg,
+                                 maxHeartRate: hr.max,
+                                 hrSeries: hr.series)
             context.insert(run)
             // La corsa entra nel sistema attività esistente: le kcal contano
             // nei totali giornalieri come ogni altro sport.
@@ -123,15 +227,10 @@ struct RunView: View {
                                       durationMinutes: max(1, Int(t.elapsed / 60)),
                                       kcalBurned: t.kcal.rounded()))
             try? context.save()
-            saved = run
-        }
-        tracker = nil   // dismissa il fullScreenCover
-        if let saved {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             // Apre il dettaglio dopo che il cover ha finito l'animazione di chiusura
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                detailRun = saved
-            }
+            try? await Task.sleep(for: .seconds(0.6))
+            detailRun = run
         }
     }
 
@@ -300,6 +399,13 @@ struct ActiveRunView: View {
 
             Spacer(minLength: 16)
 
+            // ── Fase corrente (modalità cicli) ────────────────────────────
+            if !tracker.phases.isEmpty {
+                phaseBanner
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 10)
+            }
+
             // ── Metriche live ─────────────────────────────────────────────
             VStack(spacing: 4) {
                 Text(durationString(tracker.elapsed))
@@ -321,12 +427,13 @@ struct ActiveRunView: View {
             }
             .padding(.top, 10)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 liveStat(value: paceString(tracker.currentPaceSecPerKm), label: "Passo", color: .ringGreen)
-                liveStat(value: paceString(tracker.avgPaceSecPerKm), label: "Passo medio", color: runAccent)
+                liveStat(value: paceString(tracker.avgPaceSecPerKm), label: "Medio", color: runAccent)
+                liveStat(value: tracker.currentBPM.map { "\(Int($0))" } ?? "—", label: "Bpm", color: .gymPink)
                 liveStat(value: "\(Int(tracker.kcal))", label: "Kcal", color: .ringRed)
             }
-            .padding(.horizontal, 20).padding(.top, 18)
+            .padding(.horizontal, 16).padding(.top, 18)
 
             Spacer(minLength: 16)
 
@@ -352,6 +459,36 @@ struct ActiveRunView: View {
             Button("Salva corsa") { onEnd(true) }
             Button("Scarta corsa", role: .destructive) { onEnd(false) }
             Button("Continua a correre", role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder private var phaseBanner: some View {
+        if let phase = tracker.currentPhase, let remaining = tracker.phaseRemaining {
+            let color: Color = phase.isWork ? .gymOrange : .gymGreen
+            HStack(spacing: 12) {
+                Image(systemName: phase.isWork ? "flame.fill" : "wind")
+                    .font(.system(size: 16, weight: .bold)).foregroundColor(color)
+                Text(phase.name)
+                    .font(.system(size: 15, weight: .bold)).foregroundColor(.txt)
+                Spacer()
+                Text(durationString(remaining))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit().foregroundColor(color)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(color.opacity(0.4), lineWidth: 1))
+        } else {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 15, weight: .bold)).foregroundColor(.gymGreen)
+                Text("Cicli completati — corsa libera")
+                    .font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
+                Spacer()
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(Color.gymGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
@@ -403,6 +540,7 @@ struct RunDetailView: View {
     let run: RunSession
     let onDelete: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @State private var showDeleteConfirm = false
 
     private static let dateFmt: DateFormatter = {
@@ -459,8 +597,19 @@ struct RunDetailView: View {
                                     detailStat(value: "\(Int(run.kcalBurned))", unit: "kcal",
                                                label: "Calorie", color: .ringRed)
                                 }
+                                if run.avgHeartRate > 0 {
+                                    HStack(spacing: 10) {
+                                        detailStat(value: "\(Int(run.avgHeartRate))", unit: "bpm",
+                                                   label: "FC media", color: .gymPink)
+                                        detailStat(value: "\(Int(run.maxHeartRate))", unit: "bpm",
+                                                   label: "FC max", color: .ringRed)
+                                    }
+                                }
                             }
                         }
+
+                        // Curva battito cardiaco
+                        heartRateChart
 
                         // Splits per km
                         if !run.splitSeconds.isEmpty {
@@ -513,6 +662,67 @@ struct RunDetailView: View {
             }
         }
         .presentationBackground(Color.bg)
+        .onAppear { refetchHeartRateIfMissing() }
+    }
+
+    // ── Battito cardiaco ──────────────────────────────────────────────────
+
+    @ViewBuilder private var heartRateChart: some View {
+        let hr = run.hrPoints
+        if !hr.isEmpty {
+            HTCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(text: "Battito cardiaco")
+                    Chart(Array(hr.enumerated()), id: \.offset) { _, point in
+                        LineMark(x: .value("min", point.t / 60), y: .value("bpm", point.bpm))
+                            .foregroundStyle(Color.gymPink)
+                            .interpolationMethod(.catmullRom)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                        AreaMark(x: .value("min", point.t / 60), y: .value("bpm", point.bpm))
+                            .foregroundStyle(Color.gymPink.opacity(0.12).gradient)
+                            .interpolationMethod(.catmullRom)
+                    }
+                    .chartYScale(domain: .automatic(includesZero: false))
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 5)) { v in
+                            AxisValueLabel {
+                                if let d = v.as(Double.self) {
+                                    Text("\(Int(d))′").font(.system(size: 9)).foregroundStyle(Color.muted)
+                                }
+                            }
+                            AxisGridLine().foregroundStyle(Color.brd)
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks { v in
+                            AxisValueLabel {
+                                if let d = v.as(Double.self) {
+                                    Text("\(Int(d))").font(.system(size: 9)).foregroundStyle(Color.muted)
+                                }
+                            }
+                            AxisGridLine().foregroundStyle(Color.brd)
+                        }
+                    }
+                    .frame(height: 140)
+                }
+            }
+        }
+    }
+
+    /// I campioni del Watch possono sincronizzarsi sul telefono minuti dopo la
+    /// corsa: se al salvataggio non c'era nulla, riprova quando si apre il dettaglio.
+    private func refetchHeartRateIfMissing() {
+        guard run.avgHeartRate == 0 else { return }
+        Task { @MainActor in
+            // durationSeconds esclude le pause: piccolo buffer per coprirle
+            let end = run.date.addingTimeInterval(run.durationSeconds + 300)
+            let hr = await HealthKitManager().fetchHeartRateStats(from: run.date, to: end)
+            guard hr.avg > 0 else { return }
+            run.avgHeartRate = hr.avg
+            run.maxHeartRate = hr.max
+            run.heartRateData = (try? JSONEncoder().encode(hr.series)) ?? Data()
+            try? context.save()
+        }
     }
 
     private func detailStat(value: String, unit: String, label: String, color: Color) -> some View {

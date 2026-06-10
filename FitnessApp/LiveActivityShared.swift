@@ -18,6 +18,8 @@ struct RunActivityAttributes: ActivityAttributes {
         var distanceMeters: Double
         var avgPaceSecPerKm: Double?
         var kcal: Double
+        var bpm: Double?
+        var phaseName: String?   // fase corrente nei cicli (es. "Lavoro 2/4")
     }
 }
 

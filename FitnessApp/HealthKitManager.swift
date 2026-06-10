@@ -15,7 +15,8 @@ final class HealthKitManager {
     private var readTypes: Set<HKObjectType> {
         [
             HKQuantityType(.stepCount),
-            HKQuantityType(.activeEnergyBurned)
+            HKQuantityType(.activeEnergyBurned),
+            HKQuantityType(.heartRate)
         ]
     }
 
@@ -87,6 +88,62 @@ final class HealthKitManager {
             print("HealthKit: fetch calorie attive fallito → \(error)")
             return 0
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: - Battito cardiaco (campioni scritti dall'Apple Watch)
+    // ─────────────────────────────────────────────────────────────────────
+
+    private static let bpmUnit = HKUnit.count().unitDivided(by: .minute())
+
+    /// Tutti i campioni di battito nell'intervallo: media, massimo e serie
+    /// (offset in secondi da `start`). Vuoto se non c'è un Watch che li scrive.
+    func fetchHeartRateStats(from start: Date, to end: Date) async -> (avg: Double, max: Double, series: [HRPoint]) {
+        guard isAvailable else { return (0, 0, []) }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
+        let samples: [HKQuantitySample] = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(
+                sampleType: HKQuantityType(.heartRate),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+            ) { _, samples, _ in
+                cont.resume(returning: (samples as? [HKQuantitySample]) ?? [])
+            }
+            healthStore.execute(query)
+        }
+        let bpms = samples.map { $0.quantity.doubleValue(for: Self.bpmUnit) }
+        guard !bpms.isEmpty else { return (0, 0, []) }
+        let series = zip(samples, bpms).map {
+            HRPoint(t: $0.0.startDate.timeIntervalSince(start), bpm: $0.1)
+        }
+        return (bpms.reduce(0, +) / Double(bpms.count), bpms.max() ?? 0, series)
+    }
+
+    /// Stream dei nuovi campioni di battito da adesso in poi (per il valore
+    /// live durante la corsa). Restituisce la query da fermare con stopQuery.
+    func startHeartRateStream(onSample: @escaping @MainActor (Double) -> Void) -> HKQuery? {
+        guard isAvailable else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: Date(), end: nil)
+        let handler: (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { _, samples, _, _, _ in
+            guard let last = (samples as? [HKQuantitySample])?.max(by: { $0.startDate < $1.startDate }) else { return }
+            let bpm = last.quantity.doubleValue(for: HealthKitManager.bpmUnit)
+            Task { @MainActor in onSample(bpm) }
+        }
+        let query = HKAnchoredObjectQuery(
+            type: HKQuantityType(.heartRate),
+            predicate: predicate,
+            anchor: nil,
+            limit: HKObjectQueryNoLimit,
+            resultsHandler: handler
+        )
+        query.updateHandler = handler
+        healthStore.execute(query)
+        return query
+    }
+
+    func stopQuery(_ query: HKQuery?) {
+        if let query { healthStore.stop(query) }
     }
 
     // ─────────────────────────────────────────────────────────────────────
