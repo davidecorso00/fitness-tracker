@@ -234,6 +234,7 @@ enum SportType: String, CaseIterable, Identifiable {
     var targetWeight: Double = 0
     var targetDate: Date? = nil
     var macroInputMode: String = "grams"
+    var weeklyRunKmTarget: Double = 0   // 0 = obiettivo disattivato
 
     init() {}
 }
@@ -507,6 +508,65 @@ func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -
     init(reps: Int = 10, weight: Double = 0, restSeconds: Int = 90, orderIndex: Int = 0) {
         self.reps = reps; self.weight = weight; self.restSeconds = restSeconds; self.orderIndex = orderIndex
     }
+}
+
+// MARK: - Run Session
+
+/// Punto GPS del percorso. `t` è il tempo attivo (secondi dall'inizio, pause escluse),
+/// `seg` separa i tratti tra pausa e ripresa per non disegnare linee fittizie sulla mappa.
+struct RoutePoint: Codable {
+    var lat: Double
+    var lon: Double
+    var t: Double
+    var seg: Int
+}
+
+@Model final class RunSession {
+    var date: Date = Date()
+    var dayKey: String = ""
+    var distanceMeters: Double = 0
+    var durationSeconds: Double = 0      // tempo attivo, pause escluse
+    var kcalBurned: Double = 0
+    var splitSeconds: [Double] = []      // secondi impiegati per ogni km completato
+    @Attribute(.externalStorage) var routeData: Data = Data()
+
+    init(date: Date = Date(), distanceMeters: Double = 0, durationSeconds: Double = 0,
+         kcalBurned: Double = 0, splitSeconds: [Double] = [], route: [RoutePoint] = []) {
+        self.date = date
+        self.dayKey = date.dateKey
+        self.distanceMeters = distanceMeters
+        self.durationSeconds = durationSeconds
+        self.kcalBurned = kcalBurned
+        self.splitSeconds = splitSeconds
+        self.routeData = (try? JSONEncoder().encode(route)) ?? Data()
+    }
+
+    var distanceKm: Double { distanceMeters / 1000 }
+
+    /// Passo medio in secondi al km (nil se distanza trascurabile)
+    var avgPaceSecPerKm: Double? {
+        guard distanceMeters > 50 else { return nil }
+        return durationSeconds / distanceKm
+    }
+
+    var routePoints: [RoutePoint] {
+        (try? JSONDecoder().decode([RoutePoint].self, from: routeData)) ?? []
+    }
+}
+
+/// Formatta un passo (sec/km) come "5'24\"".
+func paceString(_ secPerKm: Double?) -> String {
+    guard let p = secPerKm, p.isFinite, p > 0, p < 3600 else { return "—" }
+    let m = Int(p) / 60, s = Int(p) % 60
+    return String(format: "%d'%02d\"", m, s)
+}
+
+/// Formatta una durata in secondi come "12:34" o "1:02:34".
+func durationString(_ seconds: Double) -> String {
+    let t = Int(seconds)
+    let h = t / 3600, m = (t % 3600) / 60, s = t % 60
+    if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+    return String(format: "%02d:%02d", m, s)
 }
 
 // MARK: - Date Helpers

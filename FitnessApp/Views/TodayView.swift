@@ -266,6 +266,11 @@ struct TodayView: View {
                         // Acqua
                         WaterCard(dateKey: currentKey, target: limits?.waterTarget ?? 2.0)
 
+                        // Obiettivo corsa settimanale
+                        if let runTarget = limits?.weeklyRunKmTarget, runTarget > 0 {
+                            WeeklyRunGoalCard(targetKm: runTarget)
+                        }
+
                         // Palestra — dots distribuiti su tutta la riga
                         if let log = dayLog {
                             HTCard {

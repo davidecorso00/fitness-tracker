@@ -486,7 +486,7 @@ struct WorkoutSessionView: View {
 
     private func deleteEntry(at i: Int) {
         guard i < session.entryVMs.count else { return }
-        withAnimation { session.entryVMs.remove(at: i) }
+        withAnimation { _ = session.entryVMs.remove(at: i) }
     }
 
     private func completeSet(entry i: Int, set j: Int) {
@@ -892,7 +892,7 @@ struct TemplateEditSheet: View {
 
     private func removeExercise(at i: Int) {
         guard i < exerciseVMs.count else { return }
-        withAnimation { exerciseVMs.remove(at: i) }
+        withAnimation { _ = exerciseVMs.remove(at: i) }
     }
 
     private func addExercise(_ ex: Exercise) {

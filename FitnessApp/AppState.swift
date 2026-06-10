@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 import Combine
+#if canImport(ActivityKit) && os(iOS)
+import ActivityKit
+#endif
 
 // MARK: - Active Workout Session
 
@@ -46,6 +49,7 @@ final class ActiveWorkoutSession {
         restTask?.cancel()
         restSecondsLeft = seconds
         isResting = true
+        startRestActivity(seconds: seconds)
         restTask = Task { @MainActor [weak self] in
             var s = seconds
             while s > 0 && !Task.isCancelled {
@@ -54,7 +58,10 @@ final class ActiveWorkoutSession {
                 s -= 1
                 self?.restSecondsLeft = s
             }
-            if !Task.isCancelled { self?.isResting = false }
+            if !Task.isCancelled {
+                self?.isResting = false
+                self?.endRestActivity()
+            }
         }
     }
 
@@ -62,12 +69,42 @@ final class ActiveWorkoutSession {
         restTask?.cancel()
         restSecondsLeft = 0
         isResting = false
+        endRestActivity()
     }
 
     func stop() {
         elapsedTask?.cancel()
         restTask?.cancel()
+        endRestActivity()
     }
+
+    // ── Live Activity riposo (schermata di blocco + Dynamic Island) ──────
+
+    #if canImport(ActivityKit) && os(iOS)
+    private var restActivity: Activity<RestActivityAttributes>?
+
+    private func startRestActivity(seconds: Int) {
+        endRestActivity()
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let state = RestActivityAttributes.ContentState(
+            endDate: Date().addingTimeInterval(Double(seconds)),
+            totalSeconds: seconds)
+        // staleDate = fine countdown: se l'app resta sospesa il sistema la marca scaduta
+        let content = ActivityContent(state: state, staleDate: state.endDate)
+        restActivity = try? Activity.request(
+            attributes: RestActivityAttributes(workoutName: templateName),
+            content: content)
+    }
+
+    private func endRestActivity() {
+        guard let activity = restActivity else { return }
+        restActivity = nil
+        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+    }
+    #else
+    private func startRestActivity(seconds: Int) {}
+    private func endRestActivity() {}
+    #endif
 }
 
 // MARK: - AppState

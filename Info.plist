@@ -2,9 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSCameraUsageDescription</key>
+    <string>La fotocamera serve a scansionare i codici a barre dei prodotti alimentari.</string>
     <key>NSHealthShareUsageDescription</key>
-    <string>Legge i passi giornalieri dal tuo Apple Health per calcolare le calorie bruciate.</string>
+    <string>FitnessApp legge i tuoi passi e le calorie attive bruciate per mostrare i progressi giornalieri.</string>
     <key>NSHealthUpdateUsageDescription</key>
     <string>Questa app non scrive dati su Apple Health.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>La posizione serve a tracciare il percorso, la distanza e il passo delle tue corse.</string>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>location</string>
+    </array>
 </dict>
 </plist>

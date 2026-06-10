@@ -12,5 +12,9 @@ import SwiftUI
 struct FitnessWidgetBundle: WidgetBundle {
     var body: some Widget {
         FitnessWidget()
+        #if canImport(ActivityKit) && os(iOS)
+        RunLiveActivity()
+        RestLiveActivity()
+        #endif
     }
 }

@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Codable structs per export/import
 
 struct BackupData: Codable {
-    var version: Int = 4
+    var version: Int = 5
     var exportDate: Date = Date()
     var foods: [FoodBackup]
     var entries: [EntryBackup]
@@ -17,6 +17,14 @@ struct BackupData: Codable {
     var exercises: [ExerciseBackup]?
     var workoutTemplates: [WorkoutTemplateBackup]?
     var workoutSessions: [WorkoutSessionBackup]?
+    var runSessions: [RunSessionBackup]?
+}
+
+struct RunSessionBackup: Codable {
+    var date: Date; var dayKey: String
+    var distanceMeters: Double; var durationSeconds: Double; var kcalBurned: Double
+    var splitSeconds: [Double]
+    var route: [RoutePoint]
 }
 
 struct ExerciseBackup: Codable {
@@ -90,6 +98,7 @@ struct LimitsBackup: Codable {
     var saturatedFatTarget: Double; var saltTarget: Double
     var stepsTarget: Int; var weightTarget: Double; var startDate: Date
     var macroInputMode: String?
+    var weeklyRunKmTarget: Double?
 }
 
 struct SportBackup: Codable {
@@ -131,6 +140,9 @@ final class BackupManager {
         let wSessions  = (try? context.fetch(FetchDescriptor<WorkoutSession>(
             sortBy: [SortDescriptor(\.date)]
         ))) ?? []
+        let runs = (try? context.fetch(FetchDescriptor<RunSession>(
+            sortBy: [SortDescriptor(\.date)]
+        ))) ?? []
 
         let backup = BackupData(
             foods: foods.map {
@@ -157,7 +169,8 @@ final class BackupManager {
                     sugarTarget: $0.sugarTarget, saturatedFatTarget: $0.saturatedFatTarget,
                     saltTarget: $0.saltTarget, stepsTarget: $0.stepsTarget,
                     weightTarget: $0.weightTarget, startDate: $0.startDate,
-                    macroInputMode: $0.macroInputMode)
+                    macroInputMode: $0.macroInputMode,
+                    weeklyRunKmTarget: $0.weeklyRunKmTarget)
             },
             sports: sports.map {
                 SportBackup(dayKey: $0.dayKey, sportName: $0.sportName,
@@ -211,6 +224,12 @@ final class BackupManager {
                         )
                     }
                 )
+            },
+            runSessions: runs.map {
+                RunSessionBackup(date: $0.date, dayKey: $0.dayKey,
+                    distanceMeters: $0.distanceMeters, durationSeconds: $0.durationSeconds,
+                    kcalBurned: $0.kcalBurned, splitSeconds: $0.splitSeconds,
+                    route: $0.routePoints)
             }
         )
 
@@ -241,6 +260,7 @@ final class BackupManager {
         try context.delete(model: WorkoutSession.self)
         try context.delete(model: WorkoutEntry.self)
         try context.delete(model: WorkoutSet.self)
+        try context.delete(model: RunSession.self)
 
         for f in backup.foods {
             context.insert(FoodItem(name: f.name, kcalPer100g: f.kcal, proteinPer100g: f.protein,
@@ -279,6 +299,7 @@ final class BackupManager {
             lim.stepsTarget = l.stepsTarget; lim.weightTarget = l.weightTarget
             lim.startDate = l.startDate
             lim.macroInputMode = l.macroInputMode ?? "grams"
+            lim.weeklyRunKmTarget = l.weeklyRunKmTarget ?? 0
             context.insert(lim)
         }
 
@@ -372,6 +393,14 @@ final class BackupManager {
                     wset.entry = entry; context.insert(wset); entry.sets.append(wset)
                 }
             }
+        }
+
+        for r in backup.runSessions ?? [] {
+            let run = RunSession(date: r.date, distanceMeters: r.distanceMeters,
+                                 durationSeconds: r.durationSeconds, kcalBurned: r.kcalBurned,
+                                 splitSeconds: r.splitSeconds, route: r.route)
+            run.dayKey = r.dayKey
+            context.insert(run)
         }
 
         try context.save()

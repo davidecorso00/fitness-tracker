@@ -1,0 +1,267 @@
+#if canImport(ActivityKit) && os(iOS)
+import ActivityKit
+import WidgetKit
+import SwiftUI
+
+// MARK: - Shared attributes (mirrored from main app's LiveActivityShared.swift)
+
+struct RunActivityAttributes: ActivityAttributes {
+    struct ContentState: Codable, Hashable {
+        var startedAt: Date
+        var isPaused: Bool
+        var elapsedAtPause: Double
+        var distanceMeters: Double
+        var avgPaceSecPerKm: Double?
+        var kcal: Double
+    }
+}
+
+struct RestActivityAttributes: ActivityAttributes {
+    struct ContentState: Codable, Hashable {
+        var endDate: Date
+        var totalSeconds: Int
+    }
+    var workoutName: String
+}
+
+// MARK: - Design tokens
+
+private let activityBg = Color(red: 19/255, green: 19/255, blue: 29/255)
+private let runCyan    = Color(red: 100/255, green: 210/255, blue: 255/255)
+private let restOrange = Color(red: 255/255, green: 159/255, blue: 10/255)
+private let kcalRed    = Color(red: 250/255, green: 17/255, blue: 79/255)
+private let paceGreen  = Color(red: 146/255, green: 232/255, blue: 42/255)
+
+private func activityPaceString(_ secPerKm: Double?) -> String {
+    guard let p = secPerKm, p.isFinite, p > 0, p < 3600 else { return "—" }
+    return String(format: "%d'%02d\"", Int(p) / 60, Int(p) % 60)
+}
+
+private func activityDurationString(_ seconds: Double) -> String {
+    let t = Int(seconds)
+    let h = t / 3600, m = (t % 3600) / 60, s = t % 60
+    if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+    return String(format: "%02d:%02d", m, s)
+}
+
+// MARK: - Run chrono (system-driven, niente update ogni secondo)
+
+private struct RunChronoText: View {
+    let state: RunActivityAttributes.ContentState
+    var font: Font = .system(size: 36, weight: .bold, design: .rounded)
+
+    var body: some View {
+        if state.isPaused {
+            Text(activityDurationString(state.elapsedAtPause))
+                .font(font).monospacedDigit().foregroundStyle(.white.opacity(0.6))
+        } else {
+            Text(timerInterval: state.startedAt...state.startedAt.addingTimeInterval(86400),
+                 countsDown: false)
+                .font(font).monospacedDigit().foregroundStyle(.white)
+        }
+    }
+}
+
+// MARK: - Run Live Activity
+
+struct RunLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: RunActivityAttributes.self) { context in
+            // ── Schermata di blocco ──────────────────────────────────────
+            HStack(spacing: 14) {
+                Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(runCyan)
+                    .frame(width: 44, height: 44)
+                    .background(runCyan.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    RunChronoText(state: context.state,
+                                  font: .system(size: 28, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(runCyan)
+                }
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    activityMetric(value: activityPaceString(context.state.avgPaceSecPerKm),
+                                   label: "/km", color: paceGreen)
+                    activityMetric(value: "\(Int(context.state.kcal))",
+                                   label: "kcal", color: kcalRed)
+                }
+            }
+            .padding(16)
+            .activityBackgroundTint(activityBg)
+            .activitySystemActionForegroundColor(.white)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                // ── Espanso ──────────────────────────────────────────────
+                DynamicIslandExpandedRegion(.leading) {
+                    HStack(spacing: 6) {
+                        Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(runCyan)
+                        Text(context.state.isPaused ? "In pausa" : "Corsa")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(runCyan)
+                        .padding(.trailing, 4)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    RunChronoText(state: context.state)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack {
+                        expandedStat(value: activityPaceString(context.state.avgPaceSecPerKm),
+                                     label: "PASSO MEDIO", color: paceGreen)
+                        expandedStat(value: "\(Int(context.state.kcal))",
+                                     label: "KCAL", color: kcalRed)
+                    }
+                    .padding(.top, 6)
+                }
+            } compactLeading: {
+                Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+                    .foregroundStyle(runCyan)
+            } compactTrailing: {
+                Text(String(format: "%.1f km", context.state.distanceMeters / 1000))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(runCyan)
+            } minimal: {
+                Image(systemName: "figure.run")
+                    .foregroundStyle(runCyan)
+            }
+            .keylineTint(runCyan)
+        }
+    }
+
+    private func activityMetric(value: String, label: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .monospacedDigit().foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+    }
+
+    private func expandedStat(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .monospacedDigit().foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .kerning(0.6)
+                .foregroundStyle(.white.opacity(0.4))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Rest Live Activity
+
+struct RestLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: RestActivityAttributes.self) { context in
+            // ── Schermata di blocco ──────────────────────────────────────
+            HStack(spacing: 14) {
+                Image(systemName: "timer")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(restOrange)
+                    .frame(width: 44, height: 44)
+                    .background(restOrange.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("Riposo")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                        Spacer()
+                        Text(context.attributes.workoutName)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .lineLimit(1)
+                    }
+                    Text(timerInterval: restRange(context.state), countsDown: true)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(restOrange)
+                    ProgressView(timerInterval: restRange(context.state), countsDown: true) {
+                    } currentValueLabel: { EmptyView() }
+                        .progressViewStyle(.linear)
+                        .tint(restOrange)
+                }
+            }
+            .padding(16)
+            .activityBackgroundTint(activityBg)
+            .activitySystemActionForegroundColor(.white)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(restOrange)
+                        Text("Riposo")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(context.attributes.workoutName)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                        .padding(.trailing, 4)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text(timerInterval: restRange(context.state), countsDown: true)
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(restOrange)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    ProgressView(timerInterval: restRange(context.state), countsDown: true) {
+                    } currentValueLabel: { EmptyView() }
+                        .progressViewStyle(.linear)
+                        .tint(restOrange)
+                        .padding(.top, 4)
+                }
+            } compactLeading: {
+                Image(systemName: "timer")
+                    .foregroundStyle(restOrange)
+            } compactTrailing: {
+                Text(timerInterval: restRange(context.state), countsDown: true)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(restOrange)
+                    .frame(maxWidth: 44)
+                    .multilineTextAlignment(.trailing)
+            } minimal: {
+                Image(systemName: "timer")
+                    .foregroundStyle(restOrange)
+            }
+            .keylineTint(restOrange)
+        }
+    }
+
+    private func restRange(_ state: RestActivityAttributes.ContentState) -> ClosedRange<Date> {
+        let start = state.endDate.addingTimeInterval(-Double(state.totalSeconds))
+        return start...state.endDate
+    }
+}
+#endif

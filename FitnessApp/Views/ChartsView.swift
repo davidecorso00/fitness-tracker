@@ -30,8 +30,10 @@ struct ChartsView: View {
     @Query private var allProfiles: [UserProfile]
     @Query private var allWaterEntries: [WaterEntry]
     @Query(sort: \WorkoutSession.date) private var allWorkoutSessions: [WorkoutSession]
+    @Query(sort: \RunSession.date) private var allRunSessions: [RunSession]
 
     @State private var period: ChartPeriod = .week
+    @State private var runPeriod: GymPeriod = .threeMonths
 
     // Gym charts state
     @State private var selectedExercise: String = ""
@@ -476,6 +478,9 @@ struct ChartsView: View {
                     }
                     // PROGRESSIONE ESERCIZI
                     gymChartsSection
+
+                    // CORSA
+                    runChartsSection
                 }
                 .padding(.bottom, 120)
             }
@@ -623,6 +628,255 @@ struct ChartsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Run Charts Section
+
+    private var runsInPeriod: [RunSession] {
+        let cutoff = Calendar.current.startOfDay(for: Date()).adding(days: -runPeriod.days)
+        return allRunSessions.filter { $0.date >= cutoff }
+    }
+
+    /// Km totali aggregati per inizio settimana (ultime 12 settimane)
+    private var weeklyRunVolume: [(Date, Double)] {
+        aggregateRunVolume(component: .weekOfYear, count: 12)
+    }
+
+    /// Km totali aggregati per inizio mese (ultimi 12 mesi)
+    private var monthlyRunVolume: [(Date, Double)] {
+        aggregateRunVolume(component: .month, count: 12)
+    }
+
+    private func aggregateRunVolume(component: Calendar.Component, count: Int) -> [(Date, Double)] {
+        let cal = Calendar.current
+        guard let currentStart = cal.dateInterval(of: component, for: Date())?.start,
+              let cutoff = cal.date(byAdding: component, value: -(count - 1), to: currentStart) else { return [] }
+        var dict = [Date: Double]()
+        for r in allRunSessions {
+            guard let start = cal.dateInterval(of: component, for: r.date)?.start, start >= cutoff else { continue }
+            dict[start, default: 0] += r.distanceKm
+        }
+        return dict.sorted { $0.key < $1.key }
+    }
+
+    private var runChartsSection: some View {
+        Group {
+            if allRunSessions.isEmpty {
+                ChartCard(title: "Corsa") {
+                    VStack(spacing: 10) {
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 32)).foregroundColor(.muted)
+                        Text("Registra una corsa\nper vedere i progressi")
+                            .font(.system(size: 13)).foregroundColor(.muted).multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                } bigValue: { EmptyView() }
+            } else {
+                // Record personali (sempre su tutto lo storico)
+                let longest = allRunSessions.max { $0.distanceMeters < $1.distanceMeters }
+                let bestPace = allRunSessions
+                    .filter { $0.distanceMeters >= 1000 }
+                    .compactMap { $0.avgPaceSecPerKm }
+                    .min()
+                HTCard {
+                    VStack(spacing: 12) {
+                        SectionLabel(text: "Record corsa")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 10) {
+                            runRecordItem(icon: "road.lanes",
+                                          value: String(format: "%.2f km", longest?.distanceKm ?? 0),
+                                          label: "Corsa più lunga", color: .gymCyan)
+                            runRecordItem(icon: "bolt.fill",
+                                          value: bestPace.map { paceString($0) + " /km" } ?? "—",
+                                          label: "Passo migliore", color: .ringGreen)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+
+                // Selettore periodo
+                HTCard {
+                    VStack(spacing: 12) {
+                        SectionLabel(text: "Andamento corsa")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Picker("", selection: $runPeriod) {
+                            ForEach(GymPeriod.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+                .padding(.horizontal, 20)
+
+                // Distanza per corsa
+                let periodRuns = runsInPeriod
+                if !periodRuns.isEmpty {
+                    let totalKm = periodRuns.reduce(0) { $0 + $1.distanceKm }
+                    ChartCard(title: "Distanza") {
+                        Chart(periodRuns, id: \.persistentModelID) { run in
+                            BarMark(x: .value("Data", run.date, unit: .day), y: .value("km", run.distanceKm))
+                                .foregroundStyle(Color.gymCyan).cornerRadius(6)
+                        }
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                                AxisValueLabel(format: .dateTime.day().month(.abbreviated), centered: true)
+                                    .foregroundStyle(Color.muted).font(.system(size: 10))
+                            }
+                        }
+                        .chartYAxis {
+                            AxisMarks { v in
+                                AxisValueLabel {
+                                    if let d = v.as(Double.self) {
+                                        Text("\(d.smartFormat) km").font(.system(size: 9)).foregroundStyle(Color.muted)
+                                    }
+                                }
+                                AxisGridLine().foregroundStyle(Color.brd)
+                            }
+                        }
+                        .frame(height: 150)
+                    } bigValue: {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(String(format: "%.1f km", totalKm))
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundColor(.gymCyan)
+                            Text("in \(periodRuns.count) corse").font(.system(size: 14)).foregroundColor(.muted)
+                        }
+                    }
+
+                    // Passo medio
+                    let paceData = periodRuns.compactMap { run -> (Date, Double)? in
+                        guard let p = run.avgPaceSecPerKm else { return nil }
+                        return (run.date, p / 60)   // minuti al km
+                    }
+                    if !paceData.isEmpty {
+                        ChartCard(title: "Passo medio") {
+                            Chart(paceData, id: \.0) { date, paceMin in
+                                LineMark(x: .value("Data", date), y: .value("min/km", paceMin))
+                                    .foregroundStyle(Color.ringGreen).interpolationMethod(.catmullRom)
+                                    .lineStyle(StrokeStyle(lineWidth: 2.5))
+                                PointMark(x: .value("Data", date), y: .value("min/km", paceMin))
+                                    .foregroundStyle(Color.ringGreen).symbolSize(30)
+                            }
+                            .chartYScale(domain: .automatic(includesZero: false))
+                            .chartXAxis {
+                                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                                    AxisValueLabel(format: .dateTime.day().month(.abbreviated), centered: true)
+                                        .foregroundStyle(Color.muted).font(.system(size: 10))
+                                }
+                            }
+                            .chartYAxis {
+                                AxisMarks { v in
+                                    AxisValueLabel {
+                                        if let d = v.as(Double.self) {
+                                            Text(paceString(d * 60)).font(.system(size: 9)).foregroundStyle(Color.muted)
+                                        }
+                                    }
+                                    AxisGridLine().foregroundStyle(Color.brd)
+                                }
+                            }
+                            .frame(height: 150)
+                        } bigValue: {
+                            if let last = paceData.last {
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text(paceString(last.1 * 60))
+                                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                                        .foregroundColor(.ringGreen)
+                                    Text("/km ultima corsa").font(.system(size: 14)).foregroundColor(.muted)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Volume settimanale
+                if !weeklyRunVolume.isEmpty {
+                    ChartCard(title: "Km settimanali") {
+                        Chart(weeklyRunVolume, id: \.0) { week, km in
+                            BarMark(x: .value("Settimana", week, unit: .weekOfYear), y: .value("km", km))
+                                .foregroundStyle(Color.gymBlue).cornerRadius(5)
+                        }
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                                AxisValueLabel(format: .dateTime.day().month(.abbreviated), centered: true)
+                                    .foregroundStyle(Color.muted).font(.system(size: 10))
+                            }
+                        }
+                        .chartYAxis {
+                            AxisMarks { v in
+                                AxisValueLabel {
+                                    if let d = v.as(Double.self) {
+                                        Text("\(d.smartFormat) km").font(.system(size: 9)).foregroundStyle(Color.muted)
+                                    }
+                                }
+                                AxisGridLine().foregroundStyle(Color.brd)
+                            }
+                        }
+                        .frame(height: 140)
+                    } bigValue: {
+                        if let current = weeklyRunVolume.last {
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(String(format: "%.1f km", current.1))
+                                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                                    .foregroundColor(.gymBlue)
+                                Text("questa settimana").font(.system(size: 14)).foregroundColor(.muted)
+                            }
+                        }
+                    }
+                }
+
+                // Volume mensile
+                if !monthlyRunVolume.isEmpty {
+                    ChartCard(title: "Km mensili") {
+                        Chart(monthlyRunVolume, id: \.0) { month, km in
+                            BarMark(x: .value("Mese", month, unit: .month), y: .value("km", km))
+                                .foregroundStyle(Color.gymCyan.opacity(0.85)).cornerRadius(5)
+                        }
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { _ in
+                                AxisValueLabel(format: .dateTime.month(.narrow), centered: true)
+                                    .foregroundStyle(Color.muted).font(.system(size: 10))
+                            }
+                        }
+                        .chartYAxis {
+                            AxisMarks { v in
+                                AxisValueLabel {
+                                    if let d = v.as(Double.self) {
+                                        Text("\(d.smartFormat) km").font(.system(size: 9)).foregroundStyle(Color.muted)
+                                    }
+                                }
+                                AxisGridLine().foregroundStyle(Color.brd)
+                            }
+                        }
+                        .frame(height: 140)
+                    } bigValue: {
+                        if let current = monthlyRunVolume.last {
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(String(format: "%.1f km", current.1))
+                                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                                    .foregroundColor(.gymCyan)
+                                Text("questo mese").font(.system(size: 14)).foregroundColor(.muted)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func runRecordItem(icon: String, value: String, label: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold)).foregroundColor(color)
+                .frame(width: 34, height: 34)
+                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 16, weight: .bold, design: .rounded)).foregroundColor(.txt)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Text(label).font(.system(size: 11)).foregroundColor(.muted)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private static let shortDayFormatter: DateFormatter = {
