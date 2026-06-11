@@ -20,6 +20,7 @@ struct RunView: View {
 
     @State private var tracker: RunTracker?
     @State private var detailRun: RunSession?
+    @State private var showJumpRope = false
 
     // Impostazioni corsa (persistono tra sessioni)
     @AppStorage("runModeIntervals") private var intervalsMode = false
@@ -38,7 +39,7 @@ struct RunView: View {
         .overlay(
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    PageHeader("Corsa", subtitle: "Traccia le tue corse con il GPS", showSettings: $showSettings)
+                    PageHeader("Cardio", subtitle: "Corsa GPS e salto con la corda", showSettings: $showSettings)
 
                     VStack(spacing: 14) {
                         // Avvio corsa
@@ -60,6 +61,29 @@ struct RunView: View {
                             .foregroundColor(.black)
                             .padding(18)
                             .background(runGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+
+                        // Zona salto con la corda
+                        Button { showJumpRope = true } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "figure.jumprope")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.gymOrange)
+                                    .frame(width: 42, height: 42)
+                                    .background(Color.gymOrange.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Salto con la corda")
+                                        .font(.system(size: 15, weight: .bold)).foregroundColor(.txt)
+                                    Text("Timer a round · Tabata, boxe e cicli liberi")
+                                        .font(.system(size: 11)).foregroundColor(.muted)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12, weight: .semibold)).foregroundColor(.muted)
+                            }
+                            .padding(14)
+                            .background(Color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                         .buttonStyle(.plain)
 
@@ -107,6 +131,9 @@ struct RunView: View {
         }
         .sheet(item: $detailRun) { run in
             RunDetailView(run: run, onDelete: { deleteRun(run) })
+        }
+        .sheet(isPresented: $showJumpRope) {
+            JumpRopeView()
         }
     }
 

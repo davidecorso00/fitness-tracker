@@ -571,6 +571,41 @@ struct HRPoint: Codable {
     }
 }
 
+// MARK: - Jump Rope Session
+
+@Model final class JumpRopeSession {
+    var date: Date = Date()
+    var dayKey: String = ""
+    var rounds: Int = 0              // round completati
+    var plannedRounds: Int = 0
+    var workSeconds: Int = 0         // durata lavoro per round
+    var restSeconds: Int = 0
+    var activeSeconds: Double = 0    // tempo totale sessione, pause escluse
+    var kcalBurned: Double = 0
+    var jumps: Int = 0               // 0 = non inserito
+
+    init(date: Date = Date(), rounds: Int = 0, plannedRounds: Int = 0,
+         workSeconds: Int = 0, restSeconds: Int = 0,
+         activeSeconds: Double = 0, kcalBurned: Double = 0, jumps: Int = 0) {
+        self.date = date
+        self.dayKey = date.dateKey
+        self.rounds = rounds
+        self.plannedRounds = plannedRounds
+        self.workSeconds = workSeconds
+        self.restSeconds = restSeconds
+        self.activeSeconds = activeSeconds
+        self.kcalBurned = kcalBurned
+        self.jumps = jumps
+    }
+
+    /// Salti al minuto di lavoro effettivo (nil se i salti non sono stati inseriti)
+    var jumpsPerMinute: Double? {
+        let workTime = Double(rounds * workSeconds)
+        guard jumps > 0, workTime > 0 else { return nil }
+        return Double(jumps) / (workTime / 60)
+    }
+}
+
 /// Formatta un passo (sec/km) come "5'24\"".
 func paceString(_ secPerKm: Double?) -> String {
     guard let p = secPerKm, p.isFinite, p > 0, p < 3600 else { return "—" }

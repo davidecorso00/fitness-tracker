@@ -18,6 +18,14 @@ struct BackupData: Codable {
     var workoutTemplates: [WorkoutTemplateBackup]?
     var workoutSessions: [WorkoutSessionBackup]?
     var runSessions: [RunSessionBackup]?
+    var jumpRopeSessions: [JumpRopeSessionBackup]?
+}
+
+struct JumpRopeSessionBackup: Codable {
+    var date: Date; var dayKey: String
+    var rounds: Int; var plannedRounds: Int
+    var workSeconds: Int; var restSeconds: Int
+    var activeSeconds: Double; var kcalBurned: Double; var jumps: Int
 }
 
 struct RunSessionBackup: Codable {
@@ -145,6 +153,9 @@ final class BackupManager {
         let runs = (try? context.fetch(FetchDescriptor<RunSession>(
             sortBy: [SortDescriptor(\.date)]
         ))) ?? []
+        let ropeSessions = (try? context.fetch(FetchDescriptor<JumpRopeSession>(
+            sortBy: [SortDescriptor(\.date)]
+        ))) ?? []
 
         let backup = BackupData(
             foods: foods.map {
@@ -235,6 +246,13 @@ final class BackupManager {
                     avgHeartRate: $0.avgHeartRate > 0 ? $0.avgHeartRate : nil,
                     maxHeartRate: $0.maxHeartRate > 0 ? $0.maxHeartRate : nil,
                     heartRate: $0.hrPoints.isEmpty ? nil : $0.hrPoints)
+            },
+            jumpRopeSessions: ropeSessions.map {
+                JumpRopeSessionBackup(date: $0.date, dayKey: $0.dayKey,
+                    rounds: $0.rounds, plannedRounds: $0.plannedRounds,
+                    workSeconds: $0.workSeconds, restSeconds: $0.restSeconds,
+                    activeSeconds: $0.activeSeconds, kcalBurned: $0.kcalBurned,
+                    jumps: $0.jumps)
             }
         )
 
@@ -266,6 +284,7 @@ final class BackupManager {
         try context.delete(model: WorkoutEntry.self)
         try context.delete(model: WorkoutSet.self)
         try context.delete(model: RunSession.self)
+        try context.delete(model: JumpRopeSession.self)
 
         for f in backup.foods {
             context.insert(FoodItem(name: f.name, kcalPer100g: f.kcal, proteinPer100g: f.protein,
@@ -409,6 +428,16 @@ final class BackupManager {
                                  hrSeries: r.heartRate ?? [])
             run.dayKey = r.dayKey
             context.insert(run)
+        }
+
+        for j in backup.jumpRopeSessions ?? [] {
+            let session = JumpRopeSession(date: j.date, rounds: j.rounds,
+                                          plannedRounds: j.plannedRounds,
+                                          workSeconds: j.workSeconds, restSeconds: j.restSeconds,
+                                          activeSeconds: j.activeSeconds,
+                                          kcalBurned: j.kcalBurned, jumps: j.jumps)
+            session.dayKey = j.dayKey
+            context.insert(session)
         }
 
         try context.save()

@@ -65,7 +65,7 @@ struct RootView: View {
             Tab("Palestra", systemImage: "dumbbell.fill", value: 3) {
                 PalestraView(showSettings: $showSettings)
             }
-            Tab("Corsa", systemImage: "figure.run", value: 7) {
+            Tab("Cardio", systemImage: "figure.run", value: 7) {
                 RunView(showSettings: $showSettings)
             }
             Tab("Grafici", systemImage: "chart.xyaxis.line", value: 4) {
@@ -95,7 +95,7 @@ struct RootView: View {
             PalestraView(showSettings: $showSettings)
                 .tabItem { Label("Palestra", systemImage: "dumbbell.fill") }.tag(3)
             RunView(showSettings: $showSettings)
-                .tabItem { Label("Corsa", systemImage: "figure.run") }.tag(7)
+                .tabItem { Label("Cardio", systemImage: "figure.run") }.tag(7)
             ChartsView(showSettings: $showSettings)
                 .tabItem { Label("Grafici", systemImage: "chart.xyaxis.line") }.tag(4)
             PredictionsView(showSettings: $showSettings)
