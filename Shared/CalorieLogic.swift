@@ -125,6 +125,91 @@ func makeRecentFoods(from history: [FoodEntrySnapshot],
         .map { $0 }
 }
 
+// MARK: - Ritmo dei pasti
+
+// La regolarità dei pasti è l'intervento numero uno della CBT-E contro le
+// abbuffate: tre pasti più due o tre spuntini, senza restare troppe ore da
+// sveglio senza mangiare. È l'opposto di una serie di giorni in deficit —
+// premia il mangiare abbastanza, non il mangiare poco.
+
+struct MealRhythm: Equatable {
+    /// Occasioni distinte in cui si è mangiato. Voci registrate a pochi minuti
+    /// l'una dall'altra contano come una sola: un pranzo sono tre alimenti,
+    /// non tre pasti.
+    var occasions: Int
+    /// Intervallo più lungo fra due occasioni, in ore.
+    var longestGapHours: Double
+    var isRegular: Bool
+
+    static let empty = MealRhythm(occasions: 0, longestGapHours: 0, isRegular: false)
+}
+
+/// Occasioni minime e intervallo massimo perché una giornata sia regolare.
+/// La soglia è volutamente più larga delle 4 ore del protocollo: un criterio
+/// troppo stretto trasformerebbe l'indicatore nell'ennesima cosa da fallire.
+let regularMealsMinOccasions = 3
+let regularMealsMaxGapHours: Double = 5
+
+/// Voci ravvicinate entro questo intervallo appartengono allo stesso pasto.
+private let sameOccasionMinutes: Double = 45
+
+/// Ritmo di una singola giornata. `entries` deve contenere solo quel giorno.
+func mealRhythm(for entries: [FoodEntrySnapshot]) -> MealRhythm {
+    let times = entries.map(\.date).sorted()
+    guard !times.isEmpty else { return .empty }
+
+    // Raggruppa in occasioni
+    var occasionStarts: [Date] = [times[0]]
+    for t in times.dropFirst() {
+        if let last = occasionStarts.last,
+           t.timeIntervalSince(last) > sameOccasionMinutes * 60 {
+            occasionStarts.append(t)
+        }
+    }
+
+    // Intervallo più lungo fra un'occasione e la successiva
+    var longest: Double = 0
+    for (a, b) in zip(occasionStarts, occasionStarts.dropFirst()) {
+        longest = max(longest, b.timeIntervalSince(a) / 3600)
+    }
+
+    let regolare = occasionStarts.count >= regularMealsMinOccasions
+        && longest <= regularMealsMaxGapHours
+
+    return MealRhythm(occasions: occasionStarts.count,
+                      longestGapHours: longest,
+                      isRegular: regolare)
+}
+
+/// Quante giornate regolari negli ultimi `days` giorni conclusi.
+///
+/// È una finestra mobile, non una catena: saltare un giorno fa scendere il
+/// conteggio di uno, non azzerarlo. Una catena che si spezza pesa proprio nei
+/// giorni in cui pesa già tutto il resto, ed è il meccanismo che rende difficile
+/// ricominciare.
+struct MealRegularity: Equatable {
+    var regularDays: Int
+    var window: Int
+    /// Ore dall'ultima volta che si è mangiato. nil se non c'è nessuna voce.
+    var hoursSinceLastMeal: Double?
+    /// Esito giorno per giorno, dal più vecchio al più recente.
+    var recent: [Bool]
+
+    var allRegular: Bool { regularDays == window && window > 0 }
+}
+
+func mealRegularity(entriesByDay: [String: [FoodEntrySnapshot]],
+                    days: [String],
+                    now: Date,
+                    lastMealDate: Date?) -> MealRegularity {
+    let esiti = days.map { mealRhythm(for: entriesByDay[$0] ?? []).isRegular }
+    return MealRegularity(
+        regularDays: esiti.filter { $0 }.count,
+        window: days.count,
+        hoursSinceLastMeal: lastMealDate.map { now.timeIntervalSince($0) / 3600 },
+        recent: esiti)
+}
+
 // MARK: - Budget calorico
 
 /// Come sta andando la giornata (o il singolo pasto) rispetto al target.

@@ -16,7 +16,6 @@ struct TodayView: View {
     @State private var weightInput: String = ""
     @State private var appeared: Bool      = false
     @State private var showAddSport: Bool  = false
-    @State private var deficitStreak: Int  = 0
 
     private var currentKey: String { appState.currentDateKey }
     private var isFuture: Bool     { appState.currentDate.isFuture }
@@ -67,37 +66,21 @@ struct TodayView: View {
         return allLogs.first { $0.dateKey < todayKey && $0.weight != nil }?.weight
     }
 
-    private func refreshStreak() {
-        // Pre-build O(n) dicts so the 365-day loop uses O(1) lookups
-        let kcalByDay   = allEntries.reduce(into: [String: Double]()) { $0[$1.dayKey, default: 0] += $1.kcalSnapshot }
-        let sportByDay  = allSports.sportKcalByDay()
-        // Build running last-known-weight per day (allLogs is sorted reverse; reverse again for forward pass)
-        var weightByDay = [String: Double]()
-        var lastW: Double? = nil
-        for log in allLogs.reversed() {
-            if let w = log.weight { lastW = w }
-            if let w = lastW { weightByDay[log.dateKey] = w }
-        }
-        let logByDay = allLogs.reduce(into: [String: DayLog]()) { $0[$1.dateKey] = $1 }
+    /// Regolarità dei pasti negli ultimi sette giorni, oggi compreso.
+    private var regolaritaPasti: MealRegularity {
+        let cal = Calendar.current
+        let oggi = cal.startOfDay(for: Date())
+        let giorni = (0..<7).reversed().map { oggi.adding(days: -$0).dateKey }
 
-        var streak = 0
-        var date = Calendar.current.startOfDay(for: Date())
-        for _ in 0..<365 {
-            let key   = date.dateKey
-            let eaten = kcalByDay[key] ?? 0
-            guard eaten > 0 else {
-                if date.isToday { date = date.adding(days: -1); continue }
-                break
-            }
-            let burned = totalDailyBurn(log: logByDay[key],
-                                        sport: sportByDay[key] ?? SportKcal(),
-                                        profile: allProfiles.first,
-                                        weightKg: weightByDay[key],
-                                        on: date)
-            if eaten < burned { streak += 1 } else { break }
-            date = date.adding(days: -1)
+        var perGiorno: [String: [FoodEntrySnapshot]] = [:]
+        for e in allEntries where giorni.contains(e.dayKey) {
+            perGiorno[e.dayKey, default: []].append(e.snapshot)
         }
-        deficitStreak = streak
+
+        return mealRegularity(entriesByDay: perGiorno,
+                              days: giorni,
+                              now: Date(),
+                              lastMealDate: allEntries.map(\.date).max())
     }
 
     private func kcalEaten(for key: String) -> Double {
@@ -160,23 +143,9 @@ struct TodayView: View {
                         // proprio nei giorni in cui pesa già tutto il resto.
                         if SoftMode.attiva { SoftModeBanner() }
 
-                        // Streak
-                        if deficitStreak > 0, !SoftMode.attiva {
-                            HStack(spacing: 12) {
-                                Image(systemName: "flame.fill")
-                                    .font(.system(size: 22))
-                                    .foregroundColor(.gymOrange)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(deficitStreak) giorni in deficit")
-                                        .font(.system(size: 15, weight: .bold)).foregroundColor(.txt)
-                                    Text("Deficit calorico consecutivo")
-                                        .font(.system(size: 12)).foregroundColor(.muted)
-                                }
-                                Spacer()
-                            }
-                            .padding(14)
-                            .background(Color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
+                        // Ritmo dei pasti: ha preso il posto della serie
+                        // "giorni in deficit", che premiava il mangiare poco.
+                        MealRhythmCard(regolarita: regolaritaPasti)
 
                         // TRIPLE RING CARD
                         if let lim = limits {
@@ -298,7 +267,6 @@ struct TodayView: View {
             withAnimation(.easeOut(duration: 0.8).delay(0.2)) { appeared = true }
             appState.syncHealthKit(for: appState.currentDate, context: context)
             writeWidgetData()
-            refreshStreak()
         }
         .onChange(of: appState.currentDate) {
             appeared = false
@@ -307,9 +275,7 @@ struct TodayView: View {
             appState.syncHealthKit(for: appState.currentDate, context: context)
         }
         .onChange(of: dayLog?.weight) { syncInputFields() }
-        .onChange(of: allEntries.count) { writeWidgetData(); refreshStreak() }
-        .onChange(of: allSports.count) { refreshStreak() }
-        .onChange(of: allLogs.count) { refreshStreak() }
+        .onChange(of: allEntries.count) { writeWidgetData() }
         .onChange(of: todayWaterTotal) { writeWidgetData() }
         .onChange(of: todaySteps) { writeWidgetData() }
     }

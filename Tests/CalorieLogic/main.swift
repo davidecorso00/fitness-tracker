@@ -104,6 +104,57 @@ check("la somma dei pasti resta il target giornaliero", abs(sumAll - 2000) < 0.0
 check("pasto con quota maggiore ottiene di più",
       mealBudget(dailyTarget: 2000, meal: .lunch, shares: lopsided) == 800)
 
+// ── 4. Ritmo dei pasti ────────────────────────────────────────────────────────
+
+print("\n4. Regolarità dei pasti")
+
+func at(_ h: Int, _ m: Int = 0) -> FoodEntrySnapshot {
+    FoodEntrySnapshot(foodName: "x", grams: 100, kcal: 300, protein: 0, carbs: 0,
+                      fat: 0, fiber: 0, sugar: 0, saturatedFat: 0, salt: 0,
+                      date: t0.addingTimeInterval(Double(h) * 3600 + Double(m) * 60),
+                      meal: .snack)
+}
+
+// Colazione 8, pranzo 13, cena 20 → intervalli di 5 e 7 ore: il secondo sfora.
+let treDistanti = mealRhythm(for: [at(8), at(13), at(20)])
+check("tre pasti troppo distanti non sono regolari", !treDistanti.isRegular)
+check("conta tre occasioni", treDistanti.occasions == 3)
+check("intervallo più lungo di 7 ore", abs(treDistanti.longestGapHours - 7) < 0.01)
+
+// Con gli spuntini in mezzo gli intervalli si chiudono.
+let conSpuntini = mealRhythm(for: [at(8), at(11), at(13), at(16), at(20)])
+check("con gli spuntini la giornata è regolare", conSpuntini.isRegular)
+check("cinque occasioni", conSpuntini.occasions == 5)
+check("nessun intervallo oltre le 4 ore", conSpuntini.longestGapHours <= 4.01)
+
+// Un pranzo di tre alimenti registrati insieme resta un pasto solo.
+let pranzoUnico = mealRhythm(for: [at(13), at(13, 2), at(13, 5)])
+check("voci ravvicinate contano come un pasto solo", pranzoUnico.occasions == 1)
+check("un pasto solo non è una giornata regolare", !pranzoUnico.isRegular)
+
+// Due occasioni non bastano nemmeno se vicine.
+check("due pasti non bastano", !mealRhythm(for: [at(12), at(15)]).isRegular)
+check("giornata vuota", mealRhythm(for: []) == .empty)
+
+// Finestra mobile: saltare un giorno non azzera.
+let giorni = ["g1", "g2", "g3", "g4", "g5", "g6", "g7"]
+var perGiorno: [String: [FoodEntrySnapshot]] = [:]
+for g in giorni { perGiorno[g] = [at(8), at(11), at(13), at(16), at(20)] }
+perGiorno["g4"] = [at(20)]   // un giorno storto
+
+let reg = mealRegularity(entriesByDay: perGiorno, days: giorni,
+                         now: t0.addingTimeInterval(4 * 3600), lastMealDate: t0)
+check("sei giorni regolari su sette", reg.regularDays == 6)
+check("finestra di sette", reg.window == 7)
+check("un giorno saltato non azzera", reg.regularDays > 0)
+check("il giorno storto è segnato", reg.recent[3] == false)
+check("gli altri sono a posto", reg.recent[0] && reg.recent[6])
+check("ore dall'ultimo pasto", abs((reg.hoursSinceLastMeal ?? 0) - 4) < 0.01)
+
+let vuoto = mealRegularity(entriesByDay: [:], days: giorni, now: t0, lastMealDate: nil)
+check("senza dati nessun giorno regolare", vuoto.regularDays == 0)
+check("senza pasti non c'è un ultimo pasto", vuoto.hoursSinceLastMeal == nil)
+
 print("")
 if failures == 0 { print("TUTTI I CONTROLLI SUPERATI") }
 else { print("\(failures) CONTROLLI FALLITI"); exit(1) }
