@@ -3,7 +3,9 @@ import Foundation
 // Shared between FitnessApp and FitnessWidget targets.
 // In Xcode: select this file → File Inspector → Target Membership → check both targets.
 
-let fitnessAppGroupID = "group.davideCorso.FitnessApp"
+// nonisolated: lo leggono anche l'estensione widget e il controllo del
+// Centro di Controllo, che non girano sul main actor.
+nonisolated let fitnessAppGroupID = "group.davideCorso.FitnessApp"
 
 struct WidgetTodayData: Codable {
     var kcalEaten: Double = 0

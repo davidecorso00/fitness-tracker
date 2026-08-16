@@ -9,9 +9,18 @@ I gruppi del progetto sono sincronizzati col filesystem: i file `.swift` aggiunt
 nelle cartelle qui sotto entrano nel target automaticamente, senza toccare Xcode.
 
 ```
-Shared/                      ← tipi usati da più target (iOS e watchOS)
-├── CalorieLogic.swift       ← pasti, budget calorico, inserimento rapido
-└── WatchBridge.swift        ← formato dei messaggi iPhone ↔ Watch
+Shared/                      ← compilata in tutti e tre i target
+├── CalorieLogic.swift       ← pasti, budget calorico, regolarita', inserimento rapido
+├── GymLogic.swift           ← dischi del bilanciere e progressione del carico
+├── GoalSafety.swift         ← controllo sul ritmo dell'obiettivo di peso
+├── BreathingEngine.swift    ← respirazione guidata
+├── TraceShape.swift         ← forme da seguire col dito
+├── PausaTheme.swift         ← palette e componenti di "Un attimo"
+├── PausaContent.swift       ← calcoli e curiosita'
+├── PausaOpenIntent.swift    ← intent condiviso col controllo del Centro di Controllo
+├── WatchBridge.swift        ← formato dei messaggi iPhone ↔ Watch
+├── WidgetShared.swift       ← dati condivisi col widget
+└── ColorHex.swift
 
 FitnessApp/
 ├── FitnessAppApp.swift      ← entry point, ModelContainer, recupero store
@@ -22,34 +31,48 @@ FitnessApp/
 ├── RunTracker.swift         ← corsa GPS
 ├── JumpRopeTimer.swift      ← timer a round per il salto con la corda
 ├── BackupModels.swift       ← formato del file di backup (solo Codable)
-├── WidgetShared.swift       ← dati condivisi col widget (target membership doppia)
+├── PausaModels.swift        ← dati di "Un attimo", fuori dal backup
 ├── LiveActivityShared.swift ← attributi Live Activity (rispecchiati nel widget)
 └── Views/                   ← una cartella per tutte le schermate
 
-FitnessWidget/               ← widget home/lock screen + Live Activities
-FitnessWatch/                ← app per Apple Watch (target non ancora nel progetto)
+FitnessWidget/               ← widget, Live Activities, controllo Centro di Controllo
+FitnessWatch/                ← app per Apple Watch
+Tests/ · Scripts/            ← suite di logica, eseguibili con ./Scripts/test.sh
 ```
 
 ## App per Apple Watch
 
-Il codice è pronto (`FitnessWatch/`), ma **il target non è nel progetto Xcode**:
-aggiungerlo richiede l'SDK watchOS, che su questo Mac non è installato. Con un
-target watch incorporato e l'SDK mancante, anche la build iOS fallisce — quindi
-il target va aggiunto solo dopo aver installato la piattaforma.
+Target `FitnessWatch`, watchOS 26. Il codice sta in `FitnessWatch/`, i tipi
+condivisi con l'iPhone in `Shared/`.
 
-1. Xcode → Settings → Components → installa **watchOS**
-2. `./Scripts/add-watch-target.py`
-3. `xcodebuild -scheme FitnessWatch -destination 'generic/platform=watchOS Simulator' build`
+Come funziona: il database SwiftData vive sul telefono e l'orologio non lo vede.
+L'iPhone pubblica un riassunto della giornata con `updateApplicationContext`,
+che sostituisce il precedente e sopravvive allo spegnimento. L'orologio rimanda
+le azioni con `sendMessage` e, se il telefono non risponde, con
+`transferUserInfo`, che fa da coda affidabile. Al polso c'è aggiornamento
+ottimistico: tocchi e il numero si muove subito, senza aspettare conferma.
+L'orologio non tiene stato proprio, solo una cache dell'ultimo riassunto per
+non aprirsi vuoto.
 
-In alternativa al passo 2, in Xcode: File → New → Target → Watch App, nome
-`FitnessWatch`, poi elimina i file generati e aggiungi al target le cartelle
-`FitnessWatch/` e `Shared/`.
+### Compilare
 
-Come funziona: il database SwiftData resta sul telefono. L'iPhone pubblica un
-riassunto della giornata con `updateApplicationContext`, l'orologio rimanda le
-azioni con `sendMessage` e, se il telefono non risponde, con `transferUserInfo`
-che fa da coda affidabile. L'orologio non tiene stato proprio, solo una cache
-dell'ultimo riassunto per non aprirsi vuoto.
+Con un target Watch incorporato **non si deve passare `-sdk`**: forzerebbe anche
+il target watchOS a usare l'SDK iOS, e `WCSessionDelegate` ha requisiti diversi
+fra le due piattaforme. Si usa solo `-destination`.
+
+```bash
+xcodebuild -scheme FitnessApp -destination 'generic/platform=iOS Simulator' build
+```
+
+```bash
+xcodebuild -scheme FitnessWatch -destination 'generic/platform=watchOS Simulator' build
+```
+
+### Se il target sparisce
+
+`./Scripts/add-watch-target.py` lo ricrea nel `.pbxproj`. Serve l'SDK watchOS
+installato (Xcode → Settings → Components): senza, fallisce anche la build iOS.
+
 
 ## Integrazioni di sistema
 
