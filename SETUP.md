@@ -9,6 +9,10 @@ I gruppi del progetto sono sincronizzati col filesystem: i file `.swift` aggiunt
 nelle cartelle qui sotto entrano nel target automaticamente, senza toccare Xcode.
 
 ```
+Shared/                      ← tipi usati da più target (iOS e watchOS)
+├── CalorieLogic.swift       ← pasti, budget calorico, inserimento rapido
+└── WatchBridge.swift        ← formato dei messaggi iPhone ↔ Watch
+
 FitnessApp/
 ├── FitnessAppApp.swift      ← entry point, ModelContainer, recupero store
 ├── Models.swift             ← modelli SwiftData + calcolo calorie bruciate
@@ -23,7 +27,29 @@ FitnessApp/
 └── Views/                   ← una cartella per tutte le schermate
 
 FitnessWidget/               ← widget home/lock screen + Live Activities
+FitnessWatch/                ← app per Apple Watch (target non ancora nel progetto)
 ```
+
+## App per Apple Watch
+
+Il codice è pronto (`FitnessWatch/`), ma **il target non è nel progetto Xcode**:
+aggiungerlo richiede l'SDK watchOS, che su questo Mac non è installato. Con un
+target watch incorporato e l'SDK mancante, anche la build iOS fallisce — quindi
+il target va aggiunto solo dopo aver installato la piattaforma.
+
+1. Xcode → Settings → Components → installa **watchOS**
+2. `./Scripts/add-watch-target.py`
+3. `xcodebuild -scheme FitnessWatch -destination 'generic/platform=watchOS Simulator' build`
+
+In alternativa al passo 2, in Xcode: File → New → Target → Watch App, nome
+`FitnessWatch`, poi elimina i file generati e aggiungi al target le cartelle
+`FitnessWatch/` e `Shared/`.
+
+Come funziona: il database SwiftData resta sul telefono. L'iPhone pubblica un
+riassunto della giornata con `updateApplicationContext`, l'orologio rimanda le
+azioni con `sendMessage` e, se il telefono non risponde, con `transferUserInfo`
+che fa da coda affidabile. L'orologio non tiene stato proprio, solo una cache
+dell'ultimo riassunto per non aprirsi vuoto.
 
 ## Integrazioni di sistema
 

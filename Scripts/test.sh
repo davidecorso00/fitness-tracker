@@ -58,11 +58,11 @@ run_suite "formato-backup" \
   "$ROOT/Tests/BackupFormat/main.swift"
 
 run_suite "logica-calorie" \
-  "$ROOT/FitnessApp/CalorieLogic.swift" \
+  "$ROOT/Shared/CalorieLogic.swift" \
   "$ROOT/Tests/CalorieLogic/main.swift"
 
 run_suite "logica-palestra" \
-  "$ROOT/FitnessApp/CalorieLogic.swift" \
+  "$ROOT/Shared/CalorieLogic.swift" \
   "$ROOT/FitnessApp/GymLogic.swift" \
   "$ROOT/Tests/GymLogic/main.swift"
 

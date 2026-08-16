@@ -58,6 +58,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		FA7CBEEF00000000000000A0 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		F03801352F6B633200D77569 /* FitnessApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FitnessApp;
@@ -99,6 +104,7 @@
 				F0D0FE2E2FCB4061002EEFF8 /* FitnessWidgetExtension.entitlements */,
 				F03801352F6B633200D77569 /* FitnessApp */,
 				F0D0FDE82FCB319B002EEFF8 /* FitnessWidget */,
+				FA7CBEEF00000000000000A0 /* Shared */,
 				F0D0FDE32FCB319B002EEFF8 /* Frameworks */,
 				F03801342F6B633200D77569 /* Products */,
 				F0D0FDDA2FCB0C97002EEFF8 /* FitnessWidget */,
@@ -152,6 +158,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				F03801352F6B633200D77569 /* FitnessApp */,
+				FA7CBEEF00000000000000A0 /* Shared */,
 			);
 			name = FitnessApp;
 			packageProductDependencies = (
