@@ -12,6 +12,9 @@ import SwiftUI
 struct FitnessWidgetBundle: WidgetBundle {
     var body: some Widget {
         FitnessWidget()
+        if #available(iOS 18.0, *) {
+            PausaControl()
+        }
         #if canImport(ActivityKit) && os(iOS)
         RunLiveActivity()
         RestLiveActivity()

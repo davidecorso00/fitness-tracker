@@ -3,6 +3,7 @@ import SwiftData
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var appState = AppState()
     @State private var selectedTab = 0
     @State private var showSettings = false
@@ -30,6 +31,12 @@ struct RootView: View {
             appState.migrateTemplateExercisesIfNeeded(context: context)
             appState.setupInitialTargets(context: context)
             preservedStorePath = StoreRecovery.preservedPath
+            if PausaSignal.consuma() { mostraPausa = true }
+        }
+        // Il controllo del Centro di Controllo lascia un segnale nel gruppo
+        // condiviso e apre l'app: qui lo si raccoglie.
+        .onChange(of: scenePhase) { _, fase in
+            if fase == .active, PausaSignal.consuma() { mostraPausa = true }
         }
         // Deep link dal widget: dcfitness://sommario, ://cibo, ://acqua
         .onOpenURL { url in

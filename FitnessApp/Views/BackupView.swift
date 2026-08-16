@@ -489,6 +489,7 @@ struct BackupView: View {
         ) { result in
             switch result {
             case .success:
+                AutoBackup.ultimoManuale = Date()
                 alertMsg = "Backup esportato ✓\n\n\(exportSummary)"
             case .failure(let e):
                 alertMsg = "Errore: \(e.localizedDescription)"

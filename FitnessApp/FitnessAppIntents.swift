@@ -187,26 +187,15 @@ enum MealChoice: String, AppEnum {
 
 // MARK: - Un attimo
 
-/// Apre lo spazio senza passare dal tracker. È il percorso più corto che esista:
-/// una frase a Siri, o una scorciatoia sul tasto Azione.
-struct PausaIntent: AppIntent {
-    static var title: LocalizedStringResource = "Un attimo"
-    static var description = IntentDescription("Apre lo spazio per fermarsi un momento.")
-    static var openAppWhenRun = true
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        NotificationCenter.default.post(name: .apriPausa, object: nil)
-        return .result()
-    }
-}
+// L'intent vive in Shared/PausaOpenIntent.swift: serve anche al controllo
+// del Centro di Controllo, che gira nel processo dell'estensione widget.
 
 // MARK: - Frasi pronte per Siri
 
 struct FitnessShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
-            intent: PausaIntent(),
+            intent: ApriPausaIntent(),
             phrases: [
                 "Un attimo su \(.applicationName)",
                 "Ho bisogno di una pausa su \(.applicationName)",

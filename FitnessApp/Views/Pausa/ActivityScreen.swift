@@ -12,9 +12,10 @@ import SwiftData
 struct ActivityScreen: View {
     let attivita: [PausaAttivita]
     let onFine: () -> Void
+    let onVaiAMangiare: () -> Void
 
     private enum Scelta: String, CaseIterable, Identifiable {
-        case forma, foto, fare, mente
+        case forma, foto, fare, mente, checkin
         var id: String { rawValue }
         var titolo: String {
             switch self {
@@ -22,6 +23,7 @@ struct ActivityScreen: View {
             case .foto:  return "Guarda una foto"
             case .fare:  return "Fai qualcos'altro"
             case .mente: return "Occupa la testa"
+            case .checkin: return "Cosa c'è adesso?"
             }
         }
         var icona: String {
@@ -30,6 +32,7 @@ struct ActivityScreen: View {
             case .foto:  return "photo.on.rectangle.angled"
             case .fare:  return "figure.walk.motion"
             case .mente: return "brain"
+            case .checkin: return "questionmark.circle"
             }
         }
     }
@@ -98,6 +101,7 @@ struct ActivityScreen: View {
             case .foto:  PhotoActivity()
             case .fare:  DoSomethingActivity(attivita: attivita)
             case .mente: MindActivity()
+            case .checkin: CheckInScreen(onVaiAMangiare: onVaiAMangiare)
             }
 
             HStack(spacing: 10) {

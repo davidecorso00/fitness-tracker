@@ -181,6 +181,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				F0D0FDE82FCB319B002EEFF8 /* FitnessWidget */,
+				FA7CBEEF00000000000000A0 /* Shared */,
 			);
 			name = FitnessWidgetExtension;
 			packageProductDependencies = (

@@ -61,6 +61,10 @@ run_suite "logica-calorie" \
   "$ROOT/Shared/CalorieLogic.swift" \
   "$ROOT/Tests/CalorieLogic/main.swift"
 
+run_suite "obiettivo-peso" \
+  "$ROOT/Shared/GoalSafety.swift" \
+  "$ROOT/Tests/GoalSafety/main.swift"
+
 run_suite "logica-palestra" \
   "$ROOT/Shared/CalorieLogic.swift" \
   "$ROOT/FitnessApp/GymLogic.swift" \

@@ -27,6 +27,8 @@ enum StoreRecovery {
 @main
 struct FitnessAppApp: App {
 
+    @Environment(\.scenePhase) private var scenePhase
+
     let container: ModelContainer = {
         let schema = Schema([
             FoodItem.self, FoodEntry.self, DayLog.self,
@@ -96,6 +98,13 @@ struct FitnessAppApp: App {
         WindowGroup {
             RootView()
                 .modelContainer(container)
+                // Il backup gira all'uscita, mai all'avvio: non deve pesare
+                // sul primo schermo.
+                .onChange(of: scenePhase) { _, fase in
+                    if fase == .background {
+                        AutoBackup.eseguiSeServe(context: container.mainContext)
+                    }
+                }
                 .preferredColorScheme(.dark)
                 // ── Avvio observer HealthKit ──────────────────────────────
                 .onAppear {

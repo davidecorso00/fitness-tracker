@@ -163,9 +163,13 @@ struct SettingsView: View {
                                 }
                             }
 
+                            MealRemindersCard()
+
                             SoftModeCard()
 
                             AppleHealthCard()
+
+                            AutoBackupCard()
 
                             BackupView()
                                 .padding(.horizontal, -20)
@@ -216,6 +220,20 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showNutritionGoals) { NutritionalGoalsView() }
         .sheet(item: $editing) { LimitEditSheet(field: $0) }
+    }
+
+    /// Avviso se la data dell'obiettivo richiede un ritmo che porta a mangiare
+    /// troppo poco. Compare solo qui, mai durante la giornata.
+    private var avvisoRitmoObiettivo: String? {
+        guard let lim = limits, lim.targetWeight > 0, let data = lim.targetDate,
+              let peso = todayLog?.weight ?? lastKnownWeight, peso > 0 else { return nil }
+        let giorni = Calendar.current.dateComponents(
+            [.day], from: Calendar.current.startOfDay(for: Date()), to: data).day ?? 0
+        let basale = restingKcal(profile: profile, weightKg: peso, on: Date()) / 1.2
+        let manutenzione = basale * 1.2
+        return goalPace(pesoAttuale: peso, pesoObiettivo: lim.targetWeight,
+                        giorni: giorni, manutenzione: manutenzione,
+                        metabolismoBasale: basale)?.giudizio.avviso
     }
 
     private func save() {

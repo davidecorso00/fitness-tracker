@@ -50,7 +50,8 @@ struct PausaSpaceView: View {
                 case .attivita:
                     ActivityScreen(
                         attivita: attivita,
-                        onFine: { tappa = .uscita })
+                        onFine: { tappa = .uscita },
+                        onVaiAMangiare: { chiudi(andandoAMangiare: true) })
 
                 case .uscita:
                     ExitScreen(

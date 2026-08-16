@@ -8,30 +8,9 @@
 import WidgetKit
 import SwiftUI
 
-// MARK: - Shared data (mirrored from main app's WidgetShared.swift)
-
-private let fitnessAppGroupID = "group.davideCorso.FitnessApp"
-
-struct WidgetTodayData: Codable {
-    var kcalEaten: Double = 0
-    var kcalTarget: Double = 2255
-    var proteinEaten: Double = 0
-    var proteinTarget: Double = 200
-    var waterLiters: Double = 0
-    var waterTarget: Double = 2.0
-    var steps: Int = 0
-    var stepsTarget: Int = 10000
-
-    private static let key = "fitnessTodayWidget"
-
-    static func load() -> WidgetTodayData {
-        guard let ud = UserDefaults(suiteName: fitnessAppGroupID),
-              let data = ud.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(WidgetTodayData.self, from: data)
-        else { return WidgetTodayData() }
-        return decoded
-    }
-}
+// I tipi condivisi (WidgetTodayData, fitnessAppGroupID) arrivano da Shared/,
+// cartella compilata sia nell'app sia in questa estensione: prima erano
+// duplicati a mano qui dentro.
 
 // MARK: - Timeline
 
