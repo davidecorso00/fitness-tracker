@@ -88,31 +88,6 @@ import Foundation
     }
 }
 
-enum MealType: String, Codable, CaseIterable {
-    case breakfast = "Colazione"; case lunch = "Pranzo"
-    case dinner = "Cena"; case snack = "Snack"
-
-    /// Quota predefinita del target giornaliero. Serve a sapere quante calorie
-    /// restano *per questo pasto*, non solo per la giornata: è la cena a sforare,
-    /// e con il solo totale giornaliero te ne accorgi a cena finita.
-    var defaultBudgetShare: Double {
-        switch self {
-        case .breakfast: return 0.25
-        case .lunch:     return 0.35
-        case .dinner:    return 0.30
-        case .snack:     return 0.10
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .breakfast: return "sunrise.fill"
-        case .lunch:     return "sun.max.fill"
-        case .dinner:    return "moon.fill"
-        case .snack:     return "carrot.fill"
-        }
-    }
-}
 
 // MARK: - Day Log
 

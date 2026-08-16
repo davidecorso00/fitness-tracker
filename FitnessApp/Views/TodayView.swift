@@ -122,6 +122,8 @@ struct TodayView: View {
             waterLiters: todayWaterTotal, waterTarget: limits?.waterTarget ?? 2.0,
             steps: todaySteps, stepsTarget: limits?.stepsTarget ?? 10000
         )
+        // Stessi dati anche all'orologio, che non vede il database.
+        PhoneWatchSession.shared.publishSummary()
     }
 
     // ── Body ──────────────────────────────────────────────────────────────

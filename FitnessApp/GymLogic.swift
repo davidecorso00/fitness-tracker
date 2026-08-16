@@ -177,10 +177,3 @@ extension ProgressionAdvice {
         }
     }
 }
-
-extension Double {
-    /// "20" invece di "20.0", ma "22.5" resta "22.5".
-    var clean: String {
-        self == rounded() ? String(Int(self)) : String(format: "%.1f", self)
-    }
-}

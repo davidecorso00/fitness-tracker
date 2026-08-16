@@ -100,6 +100,7 @@ struct FitnessAppApp: App {
                     // questo contenitore: aprirne un secondo sullo stesso store
                     // significherebbe due scrittori concorrenti.
                     IntentStore.container = container
+                    PhoneWatchSession.shared.start(container: container)
                     Task { @MainActor in
                         let hk = HealthKitManager.shared
                         await hk.requestAuthorization()

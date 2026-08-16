@@ -20,7 +20,7 @@ ROOT="$PWD"
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 
-echo "Estrazione dei tipi condivisi da Models.swift…"
+echo "Estrazione dei tipi geografici da Models.swift…"
 python3 - "$ROOT" "$BUILD" <<'PY'
 import re, sys, pathlib
 
@@ -35,9 +35,6 @@ def grab(pattern, name):
 
 geo = [grab(r"struct %s: Codable \{.*?\n\}" % n, n) for n in ("RoutePoint", "HRPoint")]
 (build / "GeoStubs.swift").write_text("import Foundation\n\n" + "\n\n".join(geo) + "\n")
-
-meal = grab(r"enum MealType: String, Codable, CaseIterable \{.*?\n\}", "MealType")
-(build / "MealTypeStub.swift").write_text("import Foundation\n\n" + meal + "\n")
 PY
 
 fail=0
@@ -62,10 +59,10 @@ run_suite "formato-backup" \
 
 run_suite "logica-calorie" \
   "$ROOT/FitnessApp/CalorieLogic.swift" \
-  "$BUILD/MealTypeStub.swift" \
   "$ROOT/Tests/CalorieLogic/main.swift"
 
 run_suite "logica-palestra" \
+  "$ROOT/FitnessApp/CalorieLogic.swift" \
   "$ROOT/FitnessApp/GymLogic.swift" \
   "$ROOT/Tests/GymLogic/main.swift"
 
