@@ -37,7 +37,10 @@ struct FitnessAppApp: App {
             CustomMeal.self, CustomMealIngredient.self,
             Exercise.self, WorkoutTemplate.self, TemplateExercise.self, TemplateExerciseSet.self,
             WorkoutSession.self, WorkoutEntry.self, WorkoutSet.self,
-            RunSession.self, JumpRopeSession.self
+            RunSession.self, JumpRopeSession.self,
+            // Spazio "Un attimo": deliberatamente fuori da backup e HealthKit.
+            PausaFrase.self, PausaAttivita.self, PausaFoto.self,
+            PausaPiano.self, PausaMarker.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

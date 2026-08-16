@@ -167,9 +167,27 @@ check("peso assente → nil", old.logs.first?.weight == nil)
 check("calorie attive assenti → nil", old.logs.first?.activeCaloriesBurned == nil)
 check("targetWeight assente → nil", old.limits?.targetWeight == nil)
 
-// ── 3. Riepilogo mostrato all'utente ──────────────────────────────────────────
+// ── 3. Lo spazio "Un attimo" non esce dal telefono ────────────────────────────
 
-print("\n3. Riepilogo dopo export/import")
+print("\n3. I dati di \"Un attimo\" restano fuori dal backup")
+
+// Frasi personali, note su cosa stava succedendo e foto sono i contenuti piu'
+// sensibili dell'app: non devono finire in un file JSON condivisibile.
+// Il controllo e' sul formato, non sull'intenzione: se qualcuno aggiungesse
+// per distrazione un campo Pausa a BackupData, questo test lo ferma.
+let json = String(data: try encoder.encode(full), encoding: .utf8) ?? ""
+for vietato in ["pausa", "Pausa", "frase", "marker", "attimo"] {
+    check("il backup non contiene '\(vietato)'", !json.contains(vietato))
+}
+
+let campiBackup = Mirror(reflecting: full).children.compactMap(\.label)
+check("BackupData non ha campi della sezione Pausa",
+      !campiBackup.contains { $0.lowercased().contains("pausa") })
+print("  campi esportati: \(campiBackup.joined(separator: ", "))")
+
+// ── 4. Riepilogo mostrato all'utente ──────────────────────────────────────────
+
+print("\n4. Riepilogo dopo export/import")
 let summary = full.summaryText
 print("  → \(summary)")
 for atteso in ["piatto", "allenamento", "corsa", "farmaco", "scheda", "acqua", "sessione corda"] {

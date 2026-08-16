@@ -57,7 +57,7 @@ struct DiaryView: View {
                             dateKey: appState.currentDateKey,
                             date: appState.currentDate,
                             budget: allLimits.first.map { $0.budget(for: meal) } ?? 0,
-                            showBudget: allLimits.first?.mealBudgetsEnabled ?? true,
+                            showBudget: !SoftMode.attiva && (allLimits.first?.mealBudgetsEnabled ?? true),
                             suggestions: historyWindow.recentFoods(meal: meal, limit: 3),
                             yesterdayEntries: historyWindow.entries(on: yesterdayKey, meal: meal),
                             editingEntry: $editingEntry
@@ -391,7 +391,11 @@ struct AddFoodSheet: View {
         return CalorieBudget(consumed: eaten, target: allLimits.first?.kcalTarget ?? 0)
     }
 
-    private var warningEnabled: Bool { allLimits.first?.overBudgetWarningEnabled ?? true }
+    /// L'anteprima dello sforamento sparisce in modalità morbida: nei giorni
+    /// dopo un episodio non deve esserci niente da pareggiare.
+    private var warningEnabled: Bool {
+        !SoftMode.attiva && (allLimits.first?.overBudgetWarningEnabled ?? true)
+    }
 
     var effectiveGrams: Double {
         switch inputMode {

@@ -111,6 +111,7 @@ struct FarmaciaView: View {
                             NavBtn(icon: "chevron.left") { appState.goBack() }
                             NavBtn(icon: "chevron.right", disabled: !appState.canGoForward) { appState.goForward() }
                         }
+                        PausaBtn()
                         GearBtn { showSettings = true }
                     }
                 }

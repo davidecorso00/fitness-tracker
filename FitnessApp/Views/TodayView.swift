@@ -149,13 +149,19 @@ struct TodayView: View {
                         }
                         Spacer()
                         NavBtn(icon: "chevron.right", disabled: !appState.canGoForward) { appState.goForward() }
-                        GearBtn { showSettings = true }.padding(.leading, 4)
+                        PausaBtn().padding(.leading, 4)
+                        GearBtn { showSettings = true }
                     }
                     .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
 
                     VStack(spacing: 14) {
+                        // In modalità morbida la serie sparisce: contare i giorni
+                        // "in deficit" premia il mangiare poco, e romperla pesa
+                        // proprio nei giorni in cui pesa già tutto il resto.
+                        if SoftMode.attiva { SoftModeBanner() }
+
                         // Streak
-                        if deficitStreak > 0 {
+                        if deficitStreak > 0, !SoftMode.attiva {
                             HStack(spacing: 12) {
                                 Image(systemName: "flame.fill")
                                     .font(.system(size: 22))

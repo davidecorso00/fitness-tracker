@@ -45,13 +45,21 @@ struct CiboView: View {
                             NavBtn(icon: "chevron.left") { appState.goBack() }
                             NavBtn(icon: "chevron.right", disabled: !appState.canGoForward) { appState.goForward() }
                         }
+                        PausaBtn()
                         GearBtn { showSettings = true }
                     }
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
 
-                RemainingCaloriesBar(budget: dayBudget)
-                    .padding(.horizontal, 20).padding(.bottom, 8)
+                // In modalità morbida il diario resta un diario: niente budget,
+                // niente residuo, niente sforamento.
+                if SoftMode.attiva {
+                    SoftModeBanner()
+                        .padding(.horizontal, 20).padding(.bottom, 8)
+                } else {
+                    RemainingCaloriesBar(budget: dayBudget)
+                        .padding(.horizontal, 20).padding(.bottom, 8)
+                }
 
                 Picker("", selection: $selectedTab) {
                     Text("Diario").tag(0)

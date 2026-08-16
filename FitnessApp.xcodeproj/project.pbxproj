@@ -58,11 +58,6 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		FA7CBEEF00000000000000A0 /* Shared */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Shared;
-			sourceTree = "<group>";
-		};
 		F03801352F6B633200D77569 /* FitnessApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FitnessApp;
@@ -74,6 +69,11 @@
 				F0D0FDF32FCB319C002EEFF8 /* Exceptions for "FitnessWidget" folder in "FitnessWidgetExtension" target */,
 			);
 			path = FitnessWidget;
+			sourceTree = "<group>";
+		};
+		FA7CBEEF00000000000000A0 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */

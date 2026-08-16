@@ -99,6 +99,7 @@ struct PalestraView: View {
                             .foregroundColor(.muted)
                     }
                     Spacer()
+                    PausaBtn()
                     GearBtn { showSettings = true }
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)

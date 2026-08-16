@@ -7,10 +7,22 @@ struct RootView: View {
     @State private var selectedTab = 0
     @State private var showSettings = false
     @State private var preservedStorePath: String?
+    @State private var mostraPausa = false
 
     var body: some View {
         tabView
         .environmentObject(appState)
+        // Lo spazio "Un attimo" si apre sopra tutto, mai dentro la navigazione
+        // del diario: il tracker non deve restare visibile nemmeno di sbieco.
+        .fullScreenCover(isPresented: $mostraPausa) {
+            PausaSpaceView()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .apriPausa)) { _ in
+            mostraPausa = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pausaVaiAMangiare)) { _ in
+            selectedTab = 1
+        }
         .onAppear {
             appState.seedFoodsIfNeeded(context: context)
             appState.seedExercisesIfNeeded(context: context)
@@ -25,6 +37,7 @@ struct RootView: View {
             case "cibo", "acqua": selectedTab = 1
             case "palestra":      selectedTab = 3
             case "cardio":        selectedTab = 7
+            case "pausa":         mostraPausa = true
             default:              selectedTab = 0
             }
         }
@@ -161,8 +174,35 @@ struct PageHeader: View {
                 }
             }
             Spacer()
+            PausaBtn()
             GearBtn { showSettings = true }
         }
         .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 4)
     }
+}
+
+// MARK: - Ingresso allo spazio "Un attimo"
+
+/// Presente in ogni testata, sempre nello stesso posto. Nel momento in cui
+/// serve non si cerca: si sa già dov'è. Non cambia aspetto in base ai dati e
+/// non si accende mai in reazione a quello che hai mangiato — sarebbe un
+/// giudizio travestito da aiuto.
+struct PausaBtn: View {
+    var body: some View {
+        Button {
+            NotificationCenter.default.post(name: .apriPausa, object: nil)
+        } label: {
+            Image(systemName: "wind")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(Pausa.seafoam)
+                .frame(width: 36, height: 36)
+                .background(Color.card, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Un attimo")
+    }
+}
+
+extension Notification.Name {
+    static let apriPausa = Notification.Name("apriPausa")
 }

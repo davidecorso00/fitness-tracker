@@ -163,6 +163,8 @@ struct SettingsView: View {
                                 }
                             }
 
+                            SoftModeCard()
+
                             AppleHealthCard()
 
                             BackupView()
