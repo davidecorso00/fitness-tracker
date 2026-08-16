@@ -63,6 +63,16 @@ struct FitnessProvider: TimelineProvider {
     }
 }
 
+// MARK: - Deep link
+
+/// Destinazioni aperte toccando il widget. Lo schema è dichiarato nell'Info.plist
+/// dell'app e gestito da RootView.
+enum WidgetLink {
+    static let summary = URL(string: "dcfitness://sommario")!
+    static let food    = URL(string: "dcfitness://cibo")!
+    static let water   = URL(string: "dcfitness://acqua")!
+}
+
 // MARK: - Design tokens
 
 private let widgetBg = Color(red: 19/255, green: 19/255, blue: 29/255)
@@ -144,28 +154,34 @@ struct MediumWidgetView: View {
                 .frame(width: 0.5)
                 .padding(.vertical, 10)
 
-            // Right column: protein, steps, water
+            // Right column: protein, steps, water — ogni riga apre la sua sezione
             VStack(spacing: 0) {
-                MediumMetricRow(
-                    icon: "fork.knife",
-                    color: Color(red: 1.0, green: 0.65, blue: 0.2),
-                    value: "\(Int(data.proteinEaten))",
-                    target: "\(Int(data.proteinTarget)) g"
-                )
+                Link(destination: WidgetLink.food) {
+                    MediumMetricRow(
+                        icon: "fork.knife",
+                        color: Color(red: 1.0, green: 0.65, blue: 0.2),
+                        value: "\(Int(data.proteinEaten))",
+                        target: "\(Int(data.proteinTarget)) g"
+                    )
+                }
                 rowDivider
-                MediumMetricRow(
-                    icon: "figure.walk",
-                    color: Color(red: 0.25, green: 0.85, blue: 0.45),
-                    value: "\(data.steps)",
-                    target: "\(data.stepsTarget) passi"
-                )
+                Link(destination: WidgetLink.summary) {
+                    MediumMetricRow(
+                        icon: "figure.walk",
+                        color: Color(red: 0.25, green: 0.85, blue: 0.45),
+                        value: "\(data.steps)",
+                        target: "\(data.stepsTarget) passi"
+                    )
+                }
                 rowDivider
-                MediumMetricRow(
-                    icon: "drop.fill",
-                    color: Color(red: 0.15, green: 0.75, blue: 1.0),
-                    value: String(format: "%.1f", data.waterLiters),
-                    target: String(format: "%.1f L", data.waterTarget)
-                )
+                Link(destination: WidgetLink.water) {
+                    MediumMetricRow(
+                        icon: "drop.fill",
+                        color: Color(red: 0.15, green: 0.75, blue: 1.0),
+                        value: String(format: "%.1f", data.waterLiters),
+                        target: String(format: "%.1f L", data.waterTarget)
+                    )
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -298,6 +314,7 @@ struct FitnessWidget: Widget {
         StaticConfiguration(kind: kind, provider: FitnessProvider()) { entry in
             FitnessWidgetEntryView(entry: entry)
                 .containerBackground(widgetBg, for: .widget)
+                .widgetURL(WidgetLink.summary)
         }
         .configurationDisplayName("Fitness")
         .description("Calorie, proteine, acqua e passi di oggi.")

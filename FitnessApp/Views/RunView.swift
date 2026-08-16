@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import MapKit
 import Charts
+import HealthKit
 
 // Accent della sezione corsa
 private let runAccent = Color.gymCyan
@@ -256,6 +257,11 @@ struct RunView: View {
                                       kcalBurned: t.kcal.rounded(),
                                       autoTracked: true, sourceId: run.stableId))
             try? context.save()
+
+            HealthExport.send(activity: .running,
+                              start: run.date, durationSeconds: run.durationSeconds,
+                              kcal: run.kcalBurned, distanceMeters: run.distanceMeters)
+
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             // Apre il dettaglio dopo che il cover ha finito l'animazione di chiusura
             try? await Task.sleep(for: .seconds(0.6))

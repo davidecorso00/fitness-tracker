@@ -25,6 +25,21 @@ FitnessApp/
 FitnessWidget/               ← widget home/lock screen + Live Activities
 ```
 
+## Integrazioni di sistema
+
+- **Siri e Shortcuts** — `FitnessAppIntents.swift` espone: registra acqua,
+  calorie rimaste, registra peso, ripeti un pasto di ieri. Gli intent girano nel
+  processo dell'app e riusano il `ModelContainer` condiviso via `IntentStore`.
+- **Deep link** — schema `dcfitness://` (`sommario`, `cibo`, `acqua`, `palestra`,
+  `cardio`), gestito in `RootView.onOpenURL`. Il widget medio ci collega le
+  singole righe.
+  > Non usare `fitnessapp://`: è già rivendicato dall'app Fitness di Apple e i
+  > tap finirebbero lì.
+- **Scrittura su Apple Health** — allenamenti e peso, regolabile da Impostazioni
+  → Apple Health. Le calorie degli allenamenti sono escluse di default: l'app
+  legge l'energia attiva da Health per calcolare le calorie bruciate, quindi
+  riscriverci le proprie stime gonfierebbe il totale.
+
 ## Capability richieste sul target FitnessApp
 
 1. **HealthKit**, con l'opzione **Background Delivery** attiva.

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import HealthKit
 
 // MARK: - Sheet Item Wrappers
 
@@ -614,6 +615,12 @@ struct WorkoutSessionView: View {
             context.insert(log)
         }
         try? context.save()
+
+        HealthExport.send(activity: .traditionalStrengthTraining,
+                          start: session.startTime,
+                          durationSeconds: Double(record.durationMinutes * 60),
+                          kcal: 0)
+
         appState.activeWorkoutSession = nil
         dismiss()
     }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import HealthKit
 
 private let ropeAccent = Color.gymOrange
 private let ropeGradient = LinearGradient(colors: [.gymOrange, .gymPink],
@@ -264,6 +265,11 @@ struct JumpRopeView: View {
                                       kcalBurned: t.kcal.rounded(),
                                       autoTracked: true, sourceId: session.stableId))
             try? context.save()
+
+            HealthExport.send(activity: .jumpRope,
+                              start: session.date, durationSeconds: session.activeSeconds,
+                              kcal: session.kcalBurned)
+
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
         timer = nil

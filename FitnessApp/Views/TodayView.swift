@@ -325,6 +325,7 @@ struct TodayView: View {
         let log = appState.dayLog(for: currentKey, context: context)
         log.weight = v
         try? context.save()
+        HealthExport.sendWeight(v, on: appState.currentDate)
         hapticSuccess()
         dismissKeyboard()
     }

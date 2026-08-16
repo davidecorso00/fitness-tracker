@@ -27,6 +27,18 @@ final class HealthKitManager {
         ]
     }
 
+    /// Cosa l'app può scrivere: allenamenti (con durata e distanza), peso, e
+    /// l'energia attiva — quest'ultima usata solo se l'utente la abilita, vedi
+    /// `HealthWriteSettings.writeEnergy`.
+    private var shareTypes: Set<HKSampleType> {
+        [
+            HKObjectType.workoutType(),
+            HKQuantityType(.bodyMass),
+            HKQuantityType(.activeEnergyBurned),
+            HKQuantityType(.distanceWalkingRunning)
+        ]
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // MARK: - Autorizzazione
     // ─────────────────────────────────────────────────────────────────────
@@ -35,7 +47,7 @@ final class HealthKitManager {
     func requestAuthorization() async -> Bool {
         guard isAvailable else { return false }
         do {
-            try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+            try await healthStore.requestAuthorization(toShare: shareTypes, read: readTypes)
             return true
         } catch {
             print("HealthKit: autorizzazione fallita → \(error)")
@@ -185,6 +197,63 @@ final class HealthKitManager {
         if ac > 0 { log.activeCaloriesBurned = ac }
 
         try? context.save()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: - Scrittura su Apple Health
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Salva il peso corporeo. Nessun rischio di doppio conteggio: l'app il peso
+    /// lo scrive soltanto, non lo rilegge da Health.
+    func saveWeight(_ kg: Double, on date: Date) async {
+        guard isAvailable, kg > 0 else { return }
+        let sample = HKQuantitySample(
+            type: HKQuantityType(.bodyMass),
+            quantity: HKQuantity(unit: .gramUnit(with: .kilo), doubleValue: kg),
+            start: date, end: date)
+        do { try await healthStore.save(sample) }
+        catch { print("HealthKit: salvataggio peso fallito → \(error)") }
+    }
+
+    /// Registra un allenamento in Apple Health.
+    ///
+    /// `energyKcal` viene scritto **solo** se l'utente lo ha abilitato: l'app usa
+    /// l'energia attiva di Health come propria fonte per le calorie bruciate, e
+    /// riscriverci dentro le proprie stime creerebbe un anello che gonfia il
+    /// totale del giorno. Durata, tipo e distanza non hanno questo problema.
+    func saveWorkout(activity: HKWorkoutActivityType,
+                     start: Date, end: Date,
+                     energyKcal: Double?,
+                     distanceMeters: Double?) async {
+        guard isAvailable, end > start else { return }
+
+        let config = HKWorkoutConfiguration()
+        config.activityType = activity
+        let builder = HKWorkoutBuilder(healthStore: healthStore, configuration: config, device: .local())
+
+        do {
+            try await builder.beginCollection(at: start)
+
+            var samples: [HKSample] = []
+            if let kcal = energyKcal, kcal > 0 {
+                samples.append(HKQuantitySample(
+                    type: HKQuantityType(.activeEnergyBurned),
+                    quantity: HKQuantity(unit: .kilocalorie(), doubleValue: kcal),
+                    start: start, end: end))
+            }
+            if let meters = distanceMeters, meters > 0 {
+                samples.append(HKQuantitySample(
+                    type: HKQuantityType(.distanceWalkingRunning),
+                    quantity: HKQuantity(unit: .meter(), doubleValue: meters),
+                    start: start, end: end))
+            }
+            if !samples.isEmpty { try await builder.addSamples(samples) }
+
+            try await builder.endCollection(at: end)
+            _ = try await builder.finishWorkout()
+        } catch {
+            print("HealthKit: salvataggio allenamento fallito → \(error)")
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────

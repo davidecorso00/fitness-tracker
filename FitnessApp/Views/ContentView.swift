@@ -19,6 +19,15 @@ struct RootView: View {
             appState.setupInitialTargets(context: context)
             preservedStorePath = StoreRecovery.preservedPath
         }
+        // Deep link dal widget: dcfitness://sommario, ://cibo, ://acqua
+        .onOpenURL { url in
+            switch url.host() {
+            case "cibo", "acqua": selectedTab = 1
+            case "palestra":      selectedTab = 3
+            case "cardio":        selectedTab = 7
+            default:              selectedTab = 0
+            }
+        }
         .alert("Database ripartito da zero", isPresented: Binding(
             get: { preservedStorePath != nil },
             set: { if !$0 { preservedStorePath = nil } }

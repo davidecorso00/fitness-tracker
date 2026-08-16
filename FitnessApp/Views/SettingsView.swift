@@ -163,6 +163,8 @@ struct SettingsView: View {
                                 }
                             }
 
+                            AppleHealthCard()
+
                             BackupView()
                                 .padding(.horizontal, -20)
                                 .padding(.top, 8)
@@ -232,6 +234,60 @@ struct SettingsView: View {
                 .foregroundColor(.muted)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Apple Health
+
+/// Cosa l'app manda ad Apple Health. Le calorie sono spente di proposito e la
+/// spiegazione è a schermo: è una scelta che altera i numeri, non un dettaglio.
+struct AppleHealthCard: View {
+    @State private var workouts = HealthWriteSettings.writeWorkouts
+    @State private var weight   = HealthWriteSettings.writeWeight
+    @State private var energy   = HealthWriteSettings.writeEnergy
+
+    var body: some View {
+        LimitGroup(title: "Apple Health") {
+            VStack(spacing: 12) {
+                Toggle(isOn: $workouts) {
+                    healthLabel("Allenamenti",
+                                "Palestra, corse e corda visibili in Salute e Fitness")
+                }
+                .tint(.acc)
+                .onChange(of: workouts) { _, v in HealthWriteSettings.writeWorkouts = v }
+
+                Rectangle().fill(Color.brd).frame(height: 0.5)
+
+                Toggle(isOn: $weight) {
+                    healthLabel("Peso", "Ogni peso registrato finisce anche in Salute")
+                }
+                .tint(.acc)
+                .onChange(of: weight) { _, v in HealthWriteSettings.writeWeight = v }
+
+                Rectangle().fill(Color.brd).frame(height: 0.5)
+
+                Toggle(isOn: $energy) {
+                    healthLabel("Calorie degli allenamenti",
+                                "Sconsigliato: l'app legge l'energia attiva da Health per "
+                                + "calcolare le calorie bruciate, quindi riscriverci le proprie "
+                                + "stime gonfia il totale del giorno")
+                }
+                .tint(.gymOrange)
+                .onChange(of: energy) { _, v in HealthWriteSettings.writeEnergy = v }
+            }
+            .padding(.horizontal, 18).padding(.bottom, 14)
+        }
+    }
+
+    private func healthLabel(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(Color(hex: "cccccc"))
+            Text(subtitle)
+                .font(.system(size: 11)).foregroundColor(.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

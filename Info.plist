@@ -7,11 +7,22 @@
     <key>NSHealthShareUsageDescription</key>
     <string>FitnessApp legge i tuoi passi e le calorie attive bruciate per mostrare i progressi giornalieri.</string>
     <key>NSHealthUpdateUsageDescription</key>
-    <string>Questa app non scrive dati su Apple Health.</string>
+    <string>FitnessApp salva su Apple Health i tuoi allenamenti e il peso registrato, così restano visibili anche nelle app Salute e Fitness. Puoi disattivarlo dalle impostazioni.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>La posizione serve a tracciare il percorso, la distanza e il passo delle tue corse.</string>
     <key>NSSupportsLiveActivities</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>davideCorso.FitnessApp</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>dcfitness</string>
+            </array>
+        </dict>
+    </array>
     <key>UIBackgroundModes</key>
     <array>
         <string>location</string>
