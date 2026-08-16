@@ -1,133 +1,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Codable structs per export/import
-
-struct BackupData: Codable {
-    var version: Int = 5
-    var exportDate: Date = Date()
-    var foods: [FoodBackup]
-    var entries: [EntryBackup]
-    var logs: [LogBackup]
-    var limits: LimitsBackup?
-    var sports: [SportBackup]?
-    var userProfile: UserProfileBackup?
-    var targetHistory: [TargetHistoryBackup]?
-    var customMeals: [CustomMealBackup]?
-    var exercises: [ExerciseBackup]?
-    var workoutTemplates: [WorkoutTemplateBackup]?
-    var workoutSessions: [WorkoutSessionBackup]?
-    var runSessions: [RunSessionBackup]?
-    var jumpRopeSessions: [JumpRopeSessionBackup]?
-}
-
-struct JumpRopeSessionBackup: Codable {
-    var date: Date; var dayKey: String
-    var rounds: Int; var plannedRounds: Int
-    var workSeconds: Int; var restSeconds: Int
-    var activeSeconds: Double; var kcalBurned: Double; var jumps: Int
-}
-
-struct RunSessionBackup: Codable {
-    var date: Date; var dayKey: String
-    var distanceMeters: Double; var durationSeconds: Double; var kcalBurned: Double
-    var splitSeconds: [Double]
-    var route: [RoutePoint]
-    var avgHeartRate: Double?; var maxHeartRate: Double?
-    var heartRate: [HRPoint]?
-}
-
-struct ExerciseBackup: Codable {
-    var name: String; var muscleGroup: String; var notes: String
-    var defaultSets: Int?; var defaultReps: Int?
-    var defaultWeight: Double?; var defaultRestSeconds: Int?
-}
-
-struct TemplateExerciseSetBackup: Codable {
-    var reps: Int; var weight: Double; var restSeconds: Int; var orderIndex: Int
-}
-
-struct TemplateExerciseBackup: Codable {
-    var exerciseName: String; var muscleGroup: String; var orderIndex: Int
-    var sets: Int?; var reps: Int?; var weight: Double?; var restSeconds: Int?
-    var templateSets: [TemplateExerciseSetBackup]?
-}
-
-struct WorkoutTemplateBackup: Codable {
-    var name: String; var exerciseNames: [String]
-    var templateExercises: [TemplateExerciseBackup]?
-}
-
-struct WorkoutSessionBackup: Codable {
-    var date: Date; var dayKey: String; var templateName: String; var durationMinutes: Int
-    var entries: [WorkoutEntryBackup]
-}
-
-struct WorkoutEntryBackup: Codable {
-    var exerciseName: String; var exerciseMuscleGroup: String; var orderIndex: Int
-    var sets: [WorkoutSetBackup]
-}
-
-struct WorkoutSetBackup: Codable {
-    var reps: Int; var weight: Double; var completed: Bool; var restSeconds: Int; var orderIndex: Int
-}
-
-struct CustomMealBackup: Codable {
-    var name: String; var portions: Double
-    var ingredients: [CustomMealIngredientBackup]
-}
-
-struct CustomMealIngredientBackup: Codable {
-    var foodName: String; var grams: Double
-    var kcal: Double; var protein: Double; var carbs: Double; var fat: Double
-    var fiber: Double; var sugar: Double; var saturatedFat: Double; var salt: Double
-}
-
-struct FoodBackup: Codable {
-    var name: String
-    var kcal: Double; var protein: Double; var carbs: Double; var fat: Double
-    var fiber: Double; var sugar: Double; var saturatedFat: Double; var salt: Double
-    var portionName: String?; var portionGrams: Double?
-}
-
-struct EntryBackup: Codable {
-    var date: Date; var dayKey: String; var meal: String; var grams: Double
-    var foodName: String
-    var kcal: Double; var protein: Double; var carbs: Double; var fat: Double
-    var fiber: Double; var sugar: Double; var saturatedFat: Double; var salt: Double
-}
-
-struct LogBackup: Codable {
-    var dateKey: String; var weight: Double?; var steps: Int; var gymColor: String
-    var basalCaloriesBurned: Double?  // opzionale per compatibilità backup precedenti
-}
-
-struct LimitsBackup: Codable {
-    var kcalTarget: Double; var proteinTarget: Double; var carbsTarget: Double
-    var fatTarget: Double; var fiberTarget: Double; var sugarTarget: Double
-    var saturatedFatTarget: Double; var saltTarget: Double
-    var stepsTarget: Int; var weightTarget: Double; var startDate: Date
-    var macroInputMode: String?
-    var weeklyRunKmTarget: Double?
-}
-
-struct SportBackup: Codable {
-    var dayKey: String; var sportName: String; var durationMinutes: Int; var kcalBurned: Double
-}
-
-struct UserProfileBackup: Codable {
-    var heightCm: Double?
-    var birthDate: Date?
-    var sex: String
-}
-
-struct TargetHistoryBackup: Codable {
-    var effectiveDate: Date
-    var kcalTarget: Double; var proteinTarget: Double; var carbsTarget: Double
-    var fatTarget: Double; var fiberTarget: Double; var sugarTarget: Double
-    var saturatedFatTarget: Double; var saltTarget: Double
-    var stepsTarget: Int; var weightTarget: Double
-}
 
 // MARK: - Backup Manager
 
@@ -156,13 +29,23 @@ final class BackupManager {
         let ropeSessions = (try? context.fetch(FetchDescriptor<JumpRopeSession>(
             sortBy: [SortDescriptor(\.date)]
         ))) ?? []
+        let waters   = (try? context.fetch(FetchDescriptor<WaterEntry>(
+            sortBy: [SortDescriptor(\.date)]
+        ))) ?? []
+        let medicines = (try? context.fetch(FetchDescriptor<Medicine>(
+            sortBy: [SortDescriptor(\.createdAt)]
+        ))) ?? []
+        let medDoses = (try? context.fetch(FetchDescriptor<MedicineDose>())) ?? []
+        let medLogs  = (try? context.fetch(FetchDescriptor<MedicineLog>())) ?? []
 
         let backup = BackupData(
             foods: foods.map {
                 FoodBackup(name: $0.name, kcal: $0.kcalPer100g, protein: $0.proteinPer100g,
                     carbs: $0.carbsPer100g, fat: $0.fatPer100g, fiber: $0.fiberPer100g,
                     sugar: $0.sugarPer100g, saturatedFat: $0.saturatedFatPer100g,
-                    salt: $0.saltPer100g, portionName: $0.portionName, portionGrams: $0.portionGrams)
+                    salt: $0.saltPer100g, portionName: $0.portionName,
+                    portionGrams: $0.portionGrams,
+                    isFavorite: $0.isFavorite ? true : nil)
             },
             entries: entries.map {
                 EntryBackup(date: $0.date, dayKey: $0.dayKey, meal: $0.meal.rawValue,
@@ -174,7 +57,8 @@ final class BackupManager {
             logs: logs.map {
                 LogBackup(dateKey: $0.dateKey, weight: $0.weight, steps: $0.steps,
                     gymColor: $0.gymColor.rawValue,
-                    basalCaloriesBurned: $0.basalCaloriesBurned > 0 ? $0.basalCaloriesBurned : nil)
+                    basalCaloriesBurned: $0.basalCaloriesBurned > 0 ? $0.basalCaloriesBurned : nil,
+                    activeCaloriesBurned: $0.activeCaloriesBurned > 0 ? $0.activeCaloriesBurned : nil)
             },
             limits: limits.map {
                 LimitsBackup(kcalTarget: $0.kcalTarget, proteinTarget: $0.proteinTarget,
@@ -183,11 +67,19 @@ final class BackupManager {
                     saltTarget: $0.saltTarget, stepsTarget: $0.stepsTarget,
                     weightTarget: $0.weightTarget, startDate: $0.startDate,
                     macroInputMode: $0.macroInputMode,
-                    weeklyRunKmTarget: $0.weeklyRunKmTarget)
+                    weeklyRunKmTarget: $0.weeklyRunKmTarget,
+                    waterTarget: $0.waterTarget,
+                    targetWeight: $0.targetWeight,
+                    targetDate: $0.targetDate,
+                    mealBudgetsEnabled: $0.mealBudgetsEnabled,
+                    overBudgetWarningEnabled: $0.overBudgetWarningEnabled,
+                    breakfastPct: $0.breakfastPct, lunchPct: $0.lunchPct,
+                    dinnerPct: $0.dinnerPct, snackPct: $0.snackPct)
             },
             sports: sports.map {
                 SportBackup(dayKey: $0.dayKey, sportName: $0.sportName,
-                    durationMinutes: $0.durationMinutes, kcalBurned: $0.kcalBurned)
+                    durationMinutes: $0.durationMinutes, kcalBurned: $0.kcalBurned,
+                    autoTracked: $0.autoTracked, sourceId: $0.sourceId)
             },
             userProfile: profile.map {
                 UserProfileBackup(heightCm: $0.heightCm, birthDate: $0.birthDate, sex: $0.sex.rawValue)
@@ -245,14 +137,41 @@ final class BackupManager {
                     route: $0.routePoints,
                     avgHeartRate: $0.avgHeartRate > 0 ? $0.avgHeartRate : nil,
                     maxHeartRate: $0.maxHeartRate > 0 ? $0.maxHeartRate : nil,
-                    heartRate: $0.hrPoints.isEmpty ? nil : $0.hrPoints)
+                    heartRate: $0.hrPoints.isEmpty ? nil : $0.hrPoints,
+                    stableId: $0.stableId.isEmpty ? nil : $0.stableId)
             },
             jumpRopeSessions: ropeSessions.map {
                 JumpRopeSessionBackup(date: $0.date, dayKey: $0.dayKey,
                     rounds: $0.rounds, plannedRounds: $0.plannedRounds,
                     workSeconds: $0.workSeconds, restSeconds: $0.restSeconds,
                     activeSeconds: $0.activeSeconds, kcalBurned: $0.kcalBurned,
-                    jumps: $0.jumps)
+                    jumps: $0.jumps,
+                    stableId: $0.stableId.isEmpty ? nil : $0.stableId)
+            },
+            waterEntries: waters.map {
+                WaterBackup(dayKey: $0.dayKey, liters: $0.liters, date: $0.date)
+            },
+            medicines: medicines.map { med in
+                MedicineBackup(
+                    stableId: med.stableId, name: med.name, category: med.category,
+                    isDaily: med.isDaily,
+                    notificationEnabled: med.notificationEnabled,
+                    notificationHour: med.notificationHour,
+                    notificationMinute: med.notificationMinute,
+                    createdAt: med.createdAt,
+                    doses: medDoses
+                        .filter { $0.medicineStableId == med.stableId }
+                        .sorted { $0.sortOrder < $1.sortOrder }
+                        .map { d in
+                            MedicineDoseBackup(stableId: d.stableId, quantity: d.quantity,
+                                useTime: d.useTime, timingPhase: d.timingPhase,
+                                timingHour: d.timingHour, timingMinute: d.timingMinute,
+                                sortOrder: d.sortOrder)
+                        })
+            },
+            medicineLogs: medLogs.map {
+                MedicineLogBackup(doseStableId: $0.doseStableId, dayKey: $0.dayKey,
+                                  taken: $0.taken, date: $0.date)
             }
         )
 
@@ -262,11 +181,18 @@ final class BackupManager {
         return try encoder.encode(backup)
     }
 
-    static func restore(from data: Data, context: ModelContext) throws {
+    @discardableResult
+    static func restore(from data: Data, context: ModelContext) throws -> BackupData {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
+        // La decodifica avviene prima di qualsiasi cancellazione: un file corrotto o di
+        // un'altra app fa fallire qui, lasciando i dati attuali intatti.
         let backup = try decoder.decode(BackupData.self, from: data)
 
+        try context.delete(model: WaterEntry.self)
+        try context.delete(model: MedicineLog.self)
+        try context.delete(model: MedicineDose.self)
+        try context.delete(model: Medicine.self)
         try context.delete(model: FoodItem.self)
         try context.delete(model: FoodEntry.self)
         try context.delete(model: DayLog.self)
@@ -287,10 +213,12 @@ final class BackupManager {
         try context.delete(model: JumpRopeSession.self)
 
         for f in backup.foods {
-            context.insert(FoodItem(name: f.name, kcalPer100g: f.kcal, proteinPer100g: f.protein,
+            let item = FoodItem(name: f.name, kcalPer100g: f.kcal, proteinPer100g: f.protein,
                 carbsPer100g: f.carbs, fatPer100g: f.fat, fiberPer100g: f.fiber,
                 sugarPer100g: f.sugar, saturatedFatPer100g: f.saturatedFat, saltPer100g: f.salt,
-                portionName: f.portionName, portionGrams: f.portionGrams))
+                portionName: f.portionName, portionGrams: f.portionGrams)
+            item.isFavorite = f.isFavorite ?? false
+            context.insert(item)
         }
 
         for e in backup.entries {
@@ -310,7 +238,8 @@ final class BackupManager {
             log.weight   = l.weight
             log.steps    = l.steps
             log.gymColor = GymColor(rawValue: l.gymColor) ?? .rest
-            log.basalCaloriesBurned = l.basalCaloriesBurned ?? 0
+            log.basalCaloriesBurned  = l.basalCaloriesBurned ?? 0
+            log.activeCaloriesBurned = l.activeCaloriesBurned ?? 0
             context.insert(log)
         }
 
@@ -324,12 +253,53 @@ final class BackupManager {
             lim.startDate = l.startDate
             lim.macroInputMode = l.macroInputMode ?? "grams"
             lim.weeklyRunKmTarget = l.weeklyRunKmTarget ?? 0
+            if let wt = l.waterTarget { lim.waterTarget = wt }
+            lim.targetWeight = l.targetWeight ?? 0
+            lim.targetDate   = l.targetDate
+            lim.mealBudgetsEnabled       = l.mealBudgetsEnabled ?? true
+            lim.overBudgetWarningEnabled = l.overBudgetWarningEnabled ?? true
+            lim.breakfastPct = l.breakfastPct ?? 0
+            lim.lunchPct     = l.lunchPct ?? 0
+            lim.dinnerPct    = l.dinnerPct ?? 0
+            lim.snackPct     = l.snackPct ?? 0
             context.insert(lim)
         }
 
         for s in backup.sports ?? [] {
             context.insert(SportEntry(dayKey: s.dayKey, sportName: s.sportName,
-                durationMinutes: s.durationMinutes, kcalBurned: s.kcalBurned))
+                durationMinutes: s.durationMinutes, kcalBurned: s.kcalBurned,
+                autoTracked: s.autoTracked ?? false, sourceId: s.sourceId ?? ""))
+        }
+
+        for w in backup.waterEntries ?? [] {
+            let entry = WaterEntry(dayKey: w.dayKey, liters: w.liters)
+            entry.date = w.date   // l'init usa Date(): riporta l'orario originale
+            context.insert(entry)
+        }
+
+        // Farmaci: gli stableId vanno conservati, i log delle dosi ci puntano.
+        for m in backup.medicines ?? [] {
+            let med = Medicine(name: m.name, category: m.category, isDaily: m.isDaily,
+                               notificationEnabled: m.notificationEnabled,
+                               notificationHour: m.notificationHour,
+                               notificationMinute: m.notificationMinute)
+            med.stableId  = m.stableId
+            med.createdAt = m.createdAt
+            context.insert(med)
+            for d in m.doses {
+                let dose = MedicineDose(medicineStableId: m.stableId, quantity: d.quantity,
+                                        useTime: d.useTime, timingPhase: d.timingPhase,
+                                        timingHour: d.timingHour, timingMinute: d.timingMinute,
+                                        sortOrder: d.sortOrder)
+                dose.stableId = d.stableId
+                context.insert(dose)
+            }
+        }
+
+        for l in backup.medicineLogs ?? [] {
+            let log = MedicineLog(doseStableId: l.doseStableId, dayKey: l.dayKey, taken: l.taken)
+            log.date = l.date
+            context.insert(log)
         }
 
         if let p = backup.userProfile {
@@ -427,6 +397,7 @@ final class BackupManager {
                                  maxHeartRate: r.maxHeartRate ?? 0,
                                  hrSeries: r.heartRate ?? [])
             run.dayKey = r.dayKey
+            if let id = r.stableId { run.stableId = id }
             context.insert(run)
         }
 
@@ -437,10 +408,17 @@ final class BackupManager {
                                           activeSeconds: j.activeSeconds,
                                           kcalBurned: j.kcalBurned, jumps: j.jumps)
             session.dayKey = j.dayKey
+            if let id = j.stableId { session.stableId = id }
             context.insert(session)
         }
 
         try context.save()
+
+        // I promemoria puntavano ai farmaci di prima: vanno riprogrammati sui nuovi.
+        let restored = (try? context.fetch(FetchDescriptor<Medicine>())) ?? []
+        MedicineNotifications.rescheduleAll(restored)
+
+        return backup
     }
 }
 
@@ -451,6 +429,7 @@ struct BackupView: View {
     @State private var showExporter = false
     @State private var showImporter = false
     @State private var exportData: Data?
+    @State private var exportSummary = ""
     @State private var alertMsg = ""
     @State private var showAlert = false
     @State private var showRestoreConfirm = false
@@ -462,7 +441,11 @@ struct BackupView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     SectionLabel(text: "Esporta backup")
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Salva tutti i tuoi dati (alimenti, diario, peso, impostazioni) in un file JSON. Tienilo al sicuro prima di aggiornamenti importanti.")
+                    Text("""
+                         Salva tutto in un file JSON: alimenti, diario, piatti, peso, acqua, \
+                         farmacia, schede, allenamenti, corse, sessioni con la corda e \
+                         impostazioni. Tienilo al sicuro prima di aggiornamenti importanti.
+                         """)
                         .font(.system(size: 13)).foregroundColor(.muted)
                     Button { doExport() } label: {
                         HStack {
@@ -505,8 +488,10 @@ struct BackupView: View {
             defaultFilename: "fitness-backup-\(Date().dateKey)"
         ) { result in
             switch result {
-            case .success: alertMsg = "Backup esportato con successo ✓"
-            case .failure(let e): alertMsg = "Errore: \(e.localizedDescription)"
+            case .success:
+                alertMsg = "Backup esportato ✓\n\n\(exportSummary)"
+            case .failure(let e):
+                alertMsg = "Errore: \(e.localizedDescription)"
             }
             showAlert = true
         }
@@ -536,7 +521,11 @@ struct BackupView: View {
 
     private func doExport() {
         do {
-            exportData = try BackupManager.export(context: context)
+            let data = try BackupManager.export(context: context)
+            exportData = data
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            exportSummary = (try? decoder.decode(BackupData.self, from: data))?.summaryText ?? ""
             showExporter = true
         } catch {
             alertMsg = "Errore durante l'export: \(error.localizedDescription)"
@@ -546,8 +535,8 @@ struct BackupView: View {
 
     private func doRestore(_ data: Data) {
         do {
-            try BackupManager.restore(from: data, context: context)
-            alertMsg = "Dati ripristinati con successo ✓"
+            let restored = try BackupManager.restore(from: data, context: context)
+            alertMsg = "Dati ripristinati ✓\n\n\(restored.summaryText)"
         } catch {
             alertMsg = "Errore durante il ripristino: \(error.localizedDescription)"
         }

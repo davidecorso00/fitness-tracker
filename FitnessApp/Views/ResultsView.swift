@@ -47,7 +47,7 @@ struct ResultsView: View {
 
         // Pre-build O(n) lookup dicts — eliminates O(n²) per-day filtering
         let kcalByDay  = allEntries.reduce(into: [String: Double]()) { $0[$1.dayKey, default: 0] += $1.kcalSnapshot }
-        let sportByDay = allSports.reduce(into: [String: Double]())  { $0[$1.dayKey, default: 0] += $1.kcalBurned }
+        let sportByDay = allSports.sportKcalByDay()
         let logByDay   = allLogs.reduce(into: [String: DayLog]()) { $0[$1.dateKey] = $1 }
 
         // Running last-known weight (allLogs is sorted ascending by dateKey)
@@ -63,8 +63,8 @@ struct ResultsView: View {
             if let w = log?.weight { lastWeight = w }
 
             let eaten    = kcalByDay[key] ?? 0
-            let sportKcal = sportByDay[key] ?? 0
-            let activityKcal = Double(log?.burnedKcal ?? 0) + sportKcal
+            let sport    = sportByDay[key] ?? SportKcal()
+            let activity = activityKcal(log: log, sport: sport)
             let steps    = log?.steps ?? 0
             let gym      = log?.gymColor ?? .rest
 
@@ -73,15 +73,10 @@ struct ResultsView: View {
             if gym != .rest { s.gymDays += 1 }
 
             if eaten > 0 { s.totalKcalEaten += eaten; daysWithKcal += 1 }
-            if activityKcal > 0 { s.totalKcalBurned += activityKcal; daysWithBurn += 1 }
+            if activity > 0 { s.totalKcalBurned += activity; daysWithBurn += 1 }
 
             if eaten > 0 {
-                var totalBurn = activityKcal
-                if let p = profile, let h = p.heightCm, let bd = p.birthDate,
-                   let w = lastWeight, w > 0 {
-                    let age = Calendar.current.dateComponents([.year], from: bd, to: date).year ?? 0
-                    totalBurn += calculateBMR(weightKg: w, heightCm: h, ageYears: age, sex: p.sex) * 1.2
-                }
+                let totalBurn = restingKcal(profile: profile, weightKg: lastWeight, on: date) + activity
                 let deficit = totalBurn - eaten
                 s.totalDeficit += deficit
                 s.fatLostKg    += deficit / 7700.0

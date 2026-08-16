@@ -44,7 +44,7 @@ final class JumpRopeTimer: NSObject, ObservableObject, Identifiable {
     private var pausedTotal: Double = 0
     private var pauseStartedAt: Date?
     private var lastTick: Date = Date()
-    private let healthKit = HealthKitManager()
+    private let healthKit = HealthKitManager.shared
     private var hrQuery: HKQuery?
 
     // MET stimati: ~11.8 saltando, ~2 nel recupero in piedi

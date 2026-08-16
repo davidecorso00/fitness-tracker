@@ -15,6 +15,8 @@ import Foundation
     var saltPer100g: Double = 0
     var portionName: String? = nil
     var portionGrams: Double? = nil
+    /// Messo in cima alle liste di scelta, per non ricercarlo ogni volta.
+    var isFavorite: Bool = false
 
     init(name: String, kcalPer100g: Double, proteinPer100g: Double, carbsPer100g: Double,
          fatPer100g: Double, fiberPer100g: Double = 0, sugarPer100g: Double = 0,
@@ -67,11 +69,49 @@ import Foundation
         self.saturatedFatSnapshot = food.saturatedFat(for: grams)
         self.saltSnapshot = food.salt(for: grams)
     }
+
+    /// Voce creata da valori già calcolati: duplicazione di un pasto, ripristino da
+    /// backup, piatti componibili. Evita di dover costruire un `FoodItem` fittizio.
+    init(foodName: String, grams: Double, meal: MealType, date: Date,
+         kcal: Double, protein: Double, carbs: Double, fat: Double,
+         fiber: Double = 0, sugar: Double = 0, saturatedFat: Double = 0, salt: Double = 0) {
+        self.date = date; self.dayKey = date.dateKey; self.meal = meal; self.grams = grams
+        self.foodName = foodName
+        self.kcalSnapshot = kcal
+        self.proteinSnapshot = protein
+        self.carbsSnapshot = carbs
+        self.fatSnapshot = fat
+        self.fiberSnapshot = fiber
+        self.sugarSnapshot = sugar
+        self.saturatedFatSnapshot = saturatedFat
+        self.saltSnapshot = salt
+    }
 }
 
 enum MealType: String, Codable, CaseIterable {
     case breakfast = "Colazione"; case lunch = "Pranzo"
     case dinner = "Cena"; case snack = "Snack"
+
+    /// Quota predefinita del target giornaliero. Serve a sapere quante calorie
+    /// restano *per questo pasto*, non solo per la giornata: è la cena a sforare,
+    /// e con il solo totale giornaliero te ne accorgi a cena finita.
+    var defaultBudgetShare: Double {
+        switch self {
+        case .breakfast: return 0.25
+        case .lunch:     return 0.35
+        case .dinner:    return 0.30
+        case .snack:     return 0.10
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .breakfast: return "sunrise.fill"
+        case .lunch:     return "sun.max.fill"
+        case .dinner:    return "moon.fill"
+        case .snack:     return "carrot.fill"
+        }
+    }
 }
 
 // MARK: - Day Log
@@ -128,12 +168,19 @@ enum GymColor: String, Codable, CaseIterable {
     var sportName: String = ""
     var durationMinutes: Int = 30
     var kcalBurned: Double = 0
+    /// true = creata da un tracker interno (corsa GPS, salto con la corda) e non a mano.
+    var autoTracked: Bool = false
+    /// `stableId` della sessione che l'ha generata, per ritrovarla alla cancellazione.
+    var sourceId: String = ""
 
-    init(dayKey: String, sportName: String, durationMinutes: Int, kcalBurned: Double) {
+    init(dayKey: String, sportName: String, durationMinutes: Int, kcalBurned: Double,
+         autoTracked: Bool = false, sourceId: String = "") {
         self.dayKey = dayKey
         self.sportName = sportName
         self.durationMinutes = durationMinutes
         self.kcalBurned = kcalBurned
+        self.autoTracked = autoTracked
+        self.sourceId = sourceId
     }
 }
 
@@ -236,7 +283,28 @@ enum SportType: String, CaseIterable, Identifiable {
     var macroInputMode: String = "grams"
     var weeklyRunKmTarget: Double = 0   // 0 = obiettivo disattivato
 
+    // ── Focus calorie ────────────────────────────────────────────────────
+    /// Mostra quante calorie restano per ogni singolo pasto, non solo per il giorno.
+    var mealBudgetsEnabled: Bool = true
+    /// Avvisa (senza bloccare) quando la porzione che stai per aggiungere
+    /// porterebbe la giornata oltre il target.
+    var overBudgetWarningEnabled: Bool = true
+    /// Quote del target per pasto, in percentuale. 0 = usa le quote predefinite.
+    var breakfastPct: Double = 0
+    var lunchPct: Double = 0
+    var dinnerPct: Double = 0
+    var snackPct: Double = 0
+
     init() {}
+
+    /// Calorie assegnate a un pasto. Se le quote non sono state personalizzate
+    /// (somma 0) usa la ripartizione predefinita di `MealType`.
+    func budget(for meal: MealType) -> Double {
+        mealBudget(dailyTarget: kcalTarget, meal: meal, shares: [
+            .breakfast: breakfastPct, .lunch: lunchPct,
+            .dinner: dinnerPct, .snack: snackPct,
+        ])
+    }
 }
 
 // MARK: - User Profile
@@ -270,6 +338,79 @@ func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -
         return (m + f) / 2.0
     }
 }
+
+// MARK: - Calorie bruciate (calcolo unico, usato da Sommario, Grafici, Risultati, Predizioni)
+
+/// Kcal degli sport di un giorno, tenendo separate le attività tracciate dall'app.
+struct SportKcal {
+    var manual: Double = 0   // inserite a mano dall'utente
+    var auto: Double = 0     // corsa GPS e salto con la corda
+
+    var total: Double { manual + auto }
+}
+
+extension Sequence<SportEntry> {
+    /// Somma le kcal per giorno separando manuali e tracciate in-app.
+    func sportKcalByDay() -> [String: SportKcal] {
+        reduce(into: [String: SportKcal]()) { acc, s in
+            if s.autoTracked { acc[s.dayKey, default: SportKcal()].auto    += s.kcalBurned }
+            else             { acc[s.dayKey, default: SportKcal()].manual  += s.kcalBurned }
+        }
+    }
+
+    /// Riepilogo di un singolo giorno (la sequenza deve contenere solo quel giorno).
+    func sportKcalTotals() -> SportKcal {
+        reduce(into: SportKcal()) { acc, s in
+            if s.autoTracked { acc.auto += s.kcalBurned } else { acc.manual += s.kcalBurned }
+        }
+    }
+}
+
+/// Calorie da movimento del giorno.
+///
+/// `DayLog.activeCaloriesBurned` è l'energia attiva di Apple Health e copre già tutto il
+/// movimento della giornata, corse e salto della corda inclusi. Le `SportEntry` generate
+/// automaticamente dai tracker interni verrebbero quindi contate due volte: quando i dati
+/// Health ci sono, vengono escluse. Restano invece valide se l'energia attiva non è
+/// disponibile (niente Watch, permessi negati), perché in quel caso sono la stima migliore
+/// che abbiamo di quell'attività.
+func activityKcal(log: DayLog?, sport: SportKcal) -> Double {
+    let base = Double(log?.burnedKcal ?? 0)
+    let healthCoversWorkouts = (log?.activeCaloriesBurned ?? 0) > 0
+    return base + (healthCoversWorkouts ? sport.manual : sport.total)
+}
+
+func activityKcal(log: DayLog?, sports: [SportEntry]) -> Double {
+    activityKcal(log: log, sport: sports.sportKcalTotals())
+}
+
+/// Metabolismo basale × 1.2 per la data indicata. 0 se mancano i dati del profilo.
+func restingKcal(profile: UserProfile?, weightKg: Double?, on date: Date) -> Double {
+    guard let profile,
+          let heightCm = profile.heightCm,
+          let birthDate = profile.birthDate,
+          let w = weightKg, w > 0 else { return 0 }
+    let age = Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
+    return calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
+}
+
+/// Totale bruciato nel giorno: riposo + movimento.
+func totalDailyBurn(log: DayLog?, sport: SportKcal, profile: UserProfile?,
+                    weightKg: Double?, on date: Date) -> Double {
+    restingKcal(profile: profile, weightKg: weightKg, on: date) + activityKcal(log: log, sport: sport)
+}
+
+// MARK: - Calendario
+
+/// Calendario con la settimana che parte di lunedì, indipendentemente dalla lingua del
+/// telefono: le etichette dei grafici (L M M G V S D) e i totali "questa settimana"
+/// devono restare allineati anche con iPhone in inglese.
+let appCalendar: Calendar = {
+    var c = Calendar(identifier: .gregorian)
+    c.firstWeekday = 2
+    c.locale = Locale(identifier: "it_IT")
+    return c
+}()
 
 // MARK: - Target History
 
@@ -528,6 +669,7 @@ struct HRPoint: Codable {
 }
 
 @Model final class RunSession {
+    var stableId: String = ""
     var date: Date = Date()
     var dayKey: String = ""
     var distanceMeters: Double = 0
@@ -542,6 +684,7 @@ struct HRPoint: Codable {
     init(date: Date = Date(), distanceMeters: Double = 0, durationSeconds: Double = 0,
          kcalBurned: Double = 0, splitSeconds: [Double] = [], route: [RoutePoint] = [],
          avgHeartRate: Double = 0, maxHeartRate: Double = 0, hrSeries: [HRPoint] = []) {
+        self.stableId = UUID().uuidString
         self.date = date
         self.dayKey = date.dateKey
         self.distanceMeters = distanceMeters
@@ -574,6 +717,7 @@ struct HRPoint: Codable {
 // MARK: - Jump Rope Session
 
 @Model final class JumpRopeSession {
+    var stableId: String = ""
     var date: Date = Date()
     var dayKey: String = ""
     var rounds: Int = 0              // round completati
@@ -587,6 +731,7 @@ struct HRPoint: Codable {
     init(date: Date = Date(), rounds: Int = 0, plannedRounds: Int = 0,
          workSeconds: Int = 0, restSeconds: Int = 0,
          activeSeconds: Double = 0, kcalBurned: Double = 0, jumps: Int = 0) {
+        self.stableId = UUID().uuidString
         self.date = date
         self.dayKey = date.dateKey
         self.rounds = rounds

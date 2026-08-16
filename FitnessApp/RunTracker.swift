@@ -63,7 +63,7 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
 
     private let manager = CLLocationManager()
     private var uiTimer: Timer?
-    private let healthKit = HealthKitManager()
+    private let healthKit = HealthKitManager.shared
     private var hrQuery: HKQuery?
     private var lastMinuteNotified = 0
 

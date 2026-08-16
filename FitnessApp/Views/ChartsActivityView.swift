@@ -53,7 +53,9 @@ struct ChartsActivityView: View {
     // ── Heatmap costanza (ultime 18 settimane, stile GitHub) ──────────────
 
     private var heatmapWeeks: [[Date]] {
-        let cal = Calendar.current
+        // appCalendar parte di lunedì: le etichette L M M G V S D restano allineate
+        // anche con il telefono in una lingua che inizia la settimana di domenica.
+        let cal = appCalendar
         let today = cal.startOfDay(for: Date())
         guard let thisWeek = cal.dateInterval(of: .weekOfYear, for: today)?.start else { return [] }
         return (0..<18).reversed().map { w in

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct CiboView: View {
     @Binding var showSettings: Bool
@@ -6,12 +7,23 @@ struct CiboView: View {
 
     @State private var selectedTab = 0  // 0 = Diario, 1 = Alimenti, 2 = Piatti
 
+    @Query private var allEntries: [FoodEntry]
+    @Query private var allLimits: [AppLimits]
+
     private var subtitle: String {
         switch selectedTab {
         case 1: return "Database personale"
         case 2: return "Ricette salvate"
         default: return appState.currentDate.fullDisplay
         }
+    }
+
+    /// Budget della giornata mostrata. Resta visibile anche mentre scegli un
+    /// alimento: sapere quanto resta serve prima di decidere, non dopo.
+    private var dayBudget: CalorieBudget {
+        let key = appState.currentDateKey
+        let eaten = allEntries.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalSnapshot }
+        return CalorieBudget(consumed: eaten, target: allLimits.first?.kcalTarget ?? 0)
     }
 
     var body: some View {
@@ -37,6 +49,9 @@ struct CiboView: View {
                     }
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 8)
+
+                RemainingCaloriesBar(budget: dayBudget)
+                    .padding(.horizontal, 20).padding(.bottom, 8)
 
                 Picker("", selection: $selectedTab) {
                     Text("Diario").tag(0)

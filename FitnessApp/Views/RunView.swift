@@ -248,11 +248,13 @@ struct RunView: View {
                                  maxHeartRate: hr.max,
                                  hrSeries: hr.series)
             context.insert(run)
-            // La corsa entra nel sistema attività esistente: le kcal contano
-            // nei totali giornalieri come ogni altro sport.
+            // La corsa entra nel sistema attività esistente: le kcal contano nei totali
+            // giornalieri come ogni altro sport. `autoTracked` evita che vengano sommate
+            // due volte quando Apple Health ha già registrato l'energia attiva.
             context.insert(SportEntry(dayKey: run.dayKey, sportName: SportType.running.rawValue,
                                       durationMinutes: max(1, Int(t.elapsed / 60)),
-                                      kcalBurned: t.kcal.rounded()))
+                                      kcalBurned: t.kcal.rounded(),
+                                      autoTracked: true, sourceId: run.stableId))
             try? context.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             // Apre il dettaglio dopo che il cover ha finito l'animazione di chiusura
@@ -262,16 +264,9 @@ struct RunView: View {
     }
 
     private func deleteRun(_ run: RunSession) {
-        // Rimuove anche la SportEntry gemella creata al salvataggio
-        let key = run.dayKey
-        let kcal = run.kcalBurned.rounded()
-        let name = SportType.running.rawValue
-        let descriptor = FetchDescriptor<SportEntry>(
-            predicate: #Predicate { $0.dayKey == key && $0.sportName == name }
-        )
-        if let twin = (try? context.fetch(descriptor))?.first(where: { abs($0.kcalBurned - kcal) < 1 }) {
-            context.delete(twin)
-        }
+        deleteTwinSportEntry(sourceId: run.stableId, dayKey: run.dayKey,
+                             sportName: SportType.running.rawValue,
+                             kcal: run.kcalBurned, context: context)
         context.delete(run)
         try? context.save()
         detailRun = nil
@@ -282,11 +277,19 @@ struct RunView: View {
 
 struct WeeklyRunGoalCard: View {
     let targetKm: Double
-    @Query private var allRuns: [RunSession]
+
+    /// Solo le corse della settimana corrente: la card è sempre a schermo nel Sommario,
+    /// non ha senso farle caricare tutto lo storico a ogni refresh.
+    @Query private var weekRuns: [RunSession]
+
+    init(targetKm: Double) {
+        self.targetKm = targetKm
+        let start = currentWeekInterval()?.start ?? Calendar.current.startOfDay(for: Date())
+        _weekRuns = Query(filter: #Predicate<RunSession> { $0.date >= start })
+    }
 
     private var weekKm: Double {
-        guard let week = Calendar.current.dateInterval(of: .weekOfYear, for: Date()) else { return 0 }
-        return allRuns.reduce(0) { week.contains($1.date) ? $0 + $1.distanceKm : $0 }
+        weekRuns.reduce(0) { $0 + $1.distanceKm }
     }
 
     var body: some View {
@@ -349,6 +352,34 @@ private struct RunRow: View {
         }
         .padding(14)
         .background(Color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+// MARK: - SportEntry gemella
+
+/// Cancella la `SportEntry` creata insieme a una sessione di corsa o corda.
+/// Le sessioni nuove hanno `sourceId`; per quelle salvate prima di questo campo si
+/// ricade sull'abbinamento per giorno, nome e kcal, com'era prima.
+@MainActor
+func deleteTwinSportEntry(sourceId: String, dayKey: String, sportName: String,
+                          kcal: Double, context: ModelContext) {
+    if !sourceId.isEmpty {
+        let byId = FetchDescriptor<SportEntry>(
+            predicate: #Predicate<SportEntry> { $0.sourceId == sourceId }
+        )
+        if let twin = (try? context.fetch(byId))?.first {
+            context.delete(twin)
+            return
+        }
+    }
+    let rounded = kcal.rounded()
+    let legacy = FetchDescriptor<SportEntry>(
+        predicate: #Predicate<SportEntry> { $0.dayKey == dayKey && $0.sportName == sportName }
+    )
+    if let twin = (try? context.fetch(legacy))?.first(where: {
+        $0.sourceId.isEmpty && abs($0.kcalBurned - rounded) < 1
+    }) {
+        context.delete(twin)
     }
 }
 
@@ -743,7 +774,7 @@ struct RunDetailView: View {
         Task { @MainActor in
             // durationSeconds esclude le pause: piccolo buffer per coprirle
             let end = run.date.addingTimeInterval(run.durationSeconds + 300)
-            let hr = await HealthKitManager().fetchHeartRateStats(from: run.date, to: end)
+            let hr = await HealthKitManager.shared.fetchHeartRateStats(from: run.date, to: end)
             guard hr.avg > 0 else { return }
             run.avgHeartRate = hr.avg
             run.maxHeartRate = hr.max

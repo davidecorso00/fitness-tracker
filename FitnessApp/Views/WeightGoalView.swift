@@ -57,11 +57,7 @@ struct WeightGoalSection: View {
         for e in allEntries { d[e.dayKey, default: 0] += e.kcalSnapshot }
         return d
     }
-    private var sportByDay: [String: Double] {
-        var d: [String: Double] = [:]
-        for s in allSports { d[s.dayKey, default: 0] += s.kcalBurned }
-        return d
-    }
+    private var sportByDay: [String: SportKcal] { allSports.sportKcalByDay() }
 
     // MARK: - Current weight
 
@@ -71,15 +67,13 @@ struct WeightGoalSection: View {
 
     // MARK: - Burn calculation
 
-    private func dailyBurn(log: DayLog) -> Double {
+    private func dailyBurn(log: DayLog, sports: [String: SportKcal]) -> Double {
         guard let d = date(from: log.dateKey) else { return 0 }
-        let activity = Double(log.burnedKcal) + (sportByDay[log.dateKey] ?? 0)
-        if let p = profile, let h = p.heightCm, let b = p.birthDate,
-           let w = log.weight, w > 0 {
-            let age = Calendar.current.dateComponents([.year], from: b, to: d).year ?? 0
-            return calculateBMR(weightKg: w, heightCm: h, ageYears: age, sex: p.sex) * 1.2 + activity
-        }
-        return activity
+        return totalDailyBurn(log: log,
+                              sport: sports[log.dateKey] ?? SportKcal(),
+                              profile: profile,
+                              weightKg: log.weight,
+                              on: d)
     }
 
     // MARK: - Window stats
@@ -97,7 +91,8 @@ struct WeightGoalSection: View {
             $0.weight != nil && (kcal[$0.dateKey] ?? 0) > 0
         }
         guard !qualifying.isEmpty else { return DeficitWindow(label: label, avgDeficit: 0, count: 0) }
-        let total = qualifying.reduce(0.0) { $0 + dailyBurn(log: $1) - (kcal[$1.dateKey] ?? 0) }
+        let sports = sportByDay
+        let total = qualifying.reduce(0.0) { $0 + dailyBurn(log: $1, sports: sports) - (kcal[$1.dateKey] ?? 0) }
         return DeficitWindow(label: label, avgDeficit: total / Double(qualifying.count), count: qualifying.count)
     }
 

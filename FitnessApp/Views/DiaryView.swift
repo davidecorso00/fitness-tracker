@@ -17,6 +17,16 @@ struct DiaryView: View {
     @State private var addSheetItem: AddSheetItem?
     @State private var editingEntry: FoodEntry?
 
+    /// Storico recente: alimenta sia le scorciatoie "hai mangiato spesso questo"
+    /// sia la copia del pasto di ieri. Limitato alle voci più recenti per non
+    /// scorrere tutto l'archivio a ogni ridisegno.
+    @Query(sort: \FoodEntry.date, order: .reverse) private var recentHistory: [FoodEntry]
+    @Query private var allLimits: [AppLimits]
+
+    private var historyWindow: [FoodEntry] { Array(recentHistory.prefix(400)) }
+
+    private var yesterdayKey: String { appState.currentDate.adding(days: -1).dateKey }
+
     var body: some View {
         ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
@@ -42,7 +52,16 @@ struct DiaryView: View {
 
                 List {
                     ForEach(MealType.allCases, id: \.self) { meal in
-                        MealSection(meal: meal, dateKey: appState.currentDateKey, editingEntry: $editingEntry) {
+                        MealSection(
+                            meal: meal,
+                            dateKey: appState.currentDateKey,
+                            date: appState.currentDate,
+                            budget: allLimits.first.map { $0.budget(for: meal) } ?? 0,
+                            showBudget: allLimits.first?.mealBudgetsEnabled ?? true,
+                            suggestions: historyWindow.recentFoods(meal: meal, limit: 3),
+                            yesterdayEntries: historyWindow.entries(on: yesterdayKey, meal: meal),
+                            editingEntry: $editingEntry
+                        ) {
                             addSheetItem = AddSheetItem(meal: meal, date: appState.currentDate)
                         }
                     }
@@ -67,14 +86,28 @@ struct MealSection: View {
     @Environment(\.modelContext) private var context
     let meal: MealType
     let dateKey: String
+    let date: Date
+    let budget: Double
+    let showBudget: Bool
+    /// Alimenti già mangiati spesso a questo pasto: un tap li rimette con la
+    /// stessa quantità dell'ultima volta.
+    let suggestions: [RecentFood]
+    let yesterdayEntries: [FoodEntry]
     @Binding var editingEntry: FoodEntry?
     let onAdd: () -> Void
 
     @Query private var allEntries: [FoodEntry]
 
-    init(meal: MealType, dateKey: String, editingEntry: Binding<FoodEntry?>, onAdd: @escaping () -> Void) {
+    init(meal: MealType, dateKey: String, date: Date, budget: Double, showBudget: Bool,
+         suggestions: [RecentFood], yesterdayEntries: [FoodEntry],
+         editingEntry: Binding<FoodEntry?>, onAdd: @escaping () -> Void) {
         self.meal = meal
         self.dateKey = dateKey
+        self.date = date
+        self.budget = budget
+        self.showBudget = showBudget
+        self.suggestions = suggestions
+        self.yesterdayEntries = yesterdayEntries
         self._editingEntry = editingEntry
         self.onAdd = onAdd
         _allEntries = Query(
@@ -87,6 +120,16 @@ struct MealSection: View {
         allEntries.filter { $0.meal == meal }
     }
     var mealKcal: Double { entries.reduce(0) { $0 + $1.kcalSnapshot } }
+
+    private var mealBudget: CalorieBudget {
+        CalorieBudget(consumed: mealKcal, target: budget)
+    }
+
+    /// Suggerimenti non ancora presenti nel pasto di oggi.
+    private var freshSuggestions: [RecentFood] {
+        let already = Set(entries.map(\.foodName))
+        return suggestions.filter { !already.contains($0.foodName) }
+    }
 
     var body: some View {
         Section {
@@ -116,29 +159,109 @@ struct MealSection: View {
                 }
             }
 
-            Button { onAdd() } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                    Text("Aggiungi a \(meal.rawValue.lowercased())")
-                        .font(.system(size: 13, weight: .bold))
+            // Scorciatoie: i cibi che ripeti a questo pasto, un tap e sono dentro
+            if !freshSuggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(freshSuggestions) { recent in
+                            Button { quickAdd(recent) } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 12, weight: .bold))
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(recent.foodName)
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .lineLimit(1)
+                                        Text("\(recent.grams.smartFormat)g · \(Int(recent.kcal)) kcal")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.muted)
+                                    }
+                                }
+                                .foregroundColor(.acc)
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .background(Color.acc.opacity(0.10),
+                                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
-                .foregroundColor(.acc).padding(.vertical, 4)
+                .listRowBackground(Color.card)
+                .listRowSeparator(.hidden)
             }
+
+            HStack(spacing: 14) {
+                Button { onAdd() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                        Text("Aggiungi a \(meal.rawValue.lowercased())")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundColor(.acc)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                if !yesterdayEntries.isEmpty {
+                    Button { copyYesterday() } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.turn.down.left")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Copia da ieri")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.muted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 4)
             .listRowBackground(Color.card)
             .listRowSeparator(.hidden)
         } header: {
-            HStack {
-                Text(meal.rawValue)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.txt).textCase(nil)
-                Spacer()
-                Text("\(mealKcal.smartFormat) kcal")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.muted).textCase(nil)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(meal.rawValue)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.txt).textCase(nil)
+                    Spacer()
+                    if showBudget && budget > 0 {
+                        Text("\(mealKcal.smartFormat) / \(Int(budget)) kcal")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(mealBudget.isOver ? .gymOrange : .muted)
+                            .textCase(nil)
+                    } else {
+                        Text("\(mealKcal.smartFormat) kcal")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.muted).textCase(nil)
+                    }
+                }
+                if showBudget && budget > 0 {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.white.opacity(0.07))
+                            Capsule()
+                                .fill(mealBudget.isOver ? Color.gymOrange : Color.acc.opacity(0.75))
+                                .frame(width: geo.size.width * min(mealBudget.progress, 1))
+                        }
+                    }
+                    .frame(height: 3)
+                }
             }
             .padding(.vertical, 4)
             .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
         }
+    }
+
+    private func quickAdd(_ recent: RecentFood) {
+        QuickLog.add(recent, meal: meal, date: date, context: context)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func copyYesterday() {
+        let copied = QuickLog.copyMeal(yesterdayEntries, to: date, meal: meal, context: context)
+        if copied > 0 { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     }
 }
 
@@ -234,6 +357,8 @@ struct AddFoodSheet: View {
 
     @Query(sort: \FoodItem.name) private var foods: [FoodItem]
     @Query(sort: \CustomMeal.name) private var customMeals: [CustomMeal]
+    @Query(sort: \FoodEntry.date, order: .reverse) private var history: [FoodEntry]
+    @Query private var allLimits: [AppLimits]
     @State private var search = ""
     @State private var tab = 0  // 0 = Alimenti, 1 = Piatti
     @State private var selectedFood: FoodItem?
@@ -244,9 +369,29 @@ struct AddFoodSheet: View {
     @State private var showQuickAdd = false
     @State private var addCustomMealItem: AddCustomMealToDiaryItem?
 
+    /// Preferiti in cima, poi il resto in ordine alfabetico.
     var filtered: [FoodItem] {
-        search.isEmpty ? foods : foods.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        let base = search.isEmpty
+            ? foods
+            : foods.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        return base.sorted { a, b in
+            a.isFavorite == b.isFavorite ? a.name < b.name : a.isFavorite
+        }
     }
+
+    /// Ultimi alimenti di questo pasto, pronti da rimettere con la stessa quantità.
+    private var recents: [RecentFood] {
+        Array(history.prefix(400)).recentFoods(meal: meal, limit: 8)
+    }
+
+    /// Calorie della giornata a cui si sta aggiungendo.
+    private var dayBudget: CalorieBudget {
+        let key = date.dateKey
+        let eaten = history.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalSnapshot }
+        return CalorieBudget(consumed: eaten, target: allLimits.first?.kcalTarget ?? 0)
+    }
+
+    private var warningEnabled: Bool { allLimits.first?.overBudgetWarningEnabled ?? true }
 
     var effectiveGrams: Double {
         switch inputMode {
@@ -334,6 +479,12 @@ struct AddFoodSheet: View {
                                     }
                                 }
 
+                                // Effetto sulla giornata, prima di confermare
+                                if warningEnabled, dayBudget.target > 0, effectiveGrams > 0 {
+                                    budgetPreview(adding: food.kcal(for: effectiveGrams))
+                                        .padding(.horizontal, 20)
+                                }
+
                                 PillButton(label: "Aggiungi a \(meal.rawValue)") { addFood(food) }
                                     .padding(.horizontal, 20)
 
@@ -398,6 +549,42 @@ struct AddFoodSheet: View {
                         .buttonStyle(.plain)
                         .padding(.horizontal, 20).padding(.bottom, 8)
 
+                        // Ripeti quello che mangi di solito a questo pasto: un tap
+                        if search.isEmpty && !recents.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                SectionLabel(text: "Recenti · \(meal.rawValue.lowercased())")
+                                    .padding(.horizontal, 20)
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(recents) { recent in
+                                            Button { addRecent(recent) } label: {
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(recent.foodName)
+                                                        .font(.system(size: 12, weight: .bold))
+                                                        .foregroundColor(.txt)
+                                                        .lineLimit(1)
+                                                    Text("\(recent.grams.smartFormat)g · \(Int(recent.kcal)) kcal")
+                                                        .font(.system(size: 10))
+                                                        .foregroundColor(.muted)
+                                                }
+                                                .frame(maxWidth: 150, alignment: .leading)
+                                                .padding(.horizontal, 12).padding(.vertical, 9)
+                                                .background(Color.card,
+                                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                        .stroke(Color.acc.opacity(0.25), lineWidth: 1)
+                                                )
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                    .padding(.horizontal, 20)
+                                }
+                            }
+                            .padding(.bottom, 10)
+                        }
+
                         List {
                             ForEach(filtered) { food in
                                 Button {
@@ -407,8 +594,15 @@ struct AddFoodSheet: View {
                                 } label: {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 3) {
-                                            Text(food.name)
-                                                .font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
+                                            HStack(spacing: 5) {
+                                                if food.isFavorite {
+                                                    Image(systemName: "star.fill")
+                                                        .font(.system(size: 10))
+                                                        .foregroundColor(.gymOrange)
+                                                }
+                                                Text(food.name)
+                                                    .font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
+                                            }
                                             Text("P \(food.proteinPer100g.smartFormat)g · C \(food.carbsPer100g.smartFormat)g · G \(food.fatPer100g.smartFormat)g")
                                                 .font(.system(size: 11)).foregroundColor(.muted)
                                             if let pn = food.portionName {
@@ -425,6 +619,13 @@ struct AddFoodSheet: View {
                                 }
                                 .listRowBackground(Color.card)
                                 .listRowSeparatorTint(Color.brd)
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    Button { toggleFavorite(food) } label: {
+                                        Label(food.isFavorite ? "Togli" : "Preferito",
+                                              systemImage: food.isFavorite ? "star.slash" : "star.fill")
+                                    }
+                                    .tint(.gymOrange)
+                                }
                             }
                         }
                         .listStyle(.plain)
@@ -458,6 +659,41 @@ struct AddFoodSheet: View {
         guard g > 0 else { return }
         let entry = FoodEntry(food: food, grams: g, meal: meal, date: date)
         context.insert(entry); try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss()
+    }
+
+    private func addRecent(_ recent: RecentFood) {
+        QuickLog.add(recent, meal: meal, date: date, context: context)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        dismiss()
+    }
+
+    private func toggleFavorite(_ food: FoodItem) {
+        food.isFavorite.toggle()
+        try? context.save()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Dove ti porta questa porzione. Solo informazione: niente blocchi, niente
+    /// giudizi — il pulsante per aggiungere resta identico in ogni caso.
+    @ViewBuilder
+    private func budgetPreview(adding kcal: Double) -> some View {
+        let after = dayBudget.adding(kcal)
+        HStack(spacing: 8) {
+            Image(systemName: after.isOver ? "info.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 13))
+                .foregroundColor(after.isOver ? .gymOrange : .acc)
+            Text(after.isOver
+                 ? "Con questa porzione arrivi a +\(Int(after.consumed - after.target)) kcal sul target"
+                 : "Dopo questa porzione ti restano \(Int(after.remaining)) kcal")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(after.isOver ? .gymOrange : .muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((after.isOver ? Color.gymOrange : Color.acc).opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

@@ -256,11 +256,13 @@ struct JumpRopeView: View {
                                           kcalBurned: t.kcal,
                                           jumps: jumps)
             context.insert(session)
-            // Entra nei totali giornalieri come ogni altro sport
+            // Entra nei totali giornalieri come ogni altro sport. `autoTracked` evita il
+            // doppio conteggio quando Apple Health fornisce già l'energia attiva.
             context.insert(SportEntry(dayKey: session.dayKey,
                                       sportName: SportType.jumpRope.rawValue,
                                       durationMinutes: max(1, Int(t.elapsed / 60)),
-                                      kcalBurned: t.kcal.rounded()))
+                                      kcalBurned: t.kcal.rounded(),
+                                      autoTracked: true, sourceId: session.stableId))
             try? context.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
@@ -268,16 +270,9 @@ struct JumpRopeView: View {
     }
 
     private func deleteSession(_ session: JumpRopeSession) {
-        // Rimuove anche la SportEntry gemella
-        let key = session.dayKey
-        let kcal = session.kcalBurned.rounded()
-        let name = SportType.jumpRope.rawValue
-        let descriptor = FetchDescriptor<SportEntry>(
-            predicate: #Predicate { $0.dayKey == key && $0.sportName == name }
-        )
-        if let twin = (try? context.fetch(descriptor))?.first(where: { abs($0.kcalBurned - kcal) < 1 }) {
-            context.delete(twin)
-        }
+        deleteTwinSportEntry(sourceId: session.stableId, dayKey: session.dayKey,
+                             sportName: SportType.jumpRope.rawValue,
+                             kcal: session.kcalBurned, context: context)
         context.delete(session)
         try? context.save()
     }

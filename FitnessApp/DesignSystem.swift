@@ -110,6 +110,54 @@ struct MacroBar: View {
     }
 }
 
+// MARK: - Calorie rimaste
+
+/// Barra compatta con le calorie che restano. Tono volutamente neutro: informa
+/// dove sei, senza premi né rimproveri.
+struct RemainingCaloriesBar: View {
+    let budget: CalorieBudget
+    var compact: Bool = false
+
+    private var tint: Color { budget.isOver ? .gymOrange : .acc }
+
+    var body: some View {
+        if budget.target > 0 {
+            VStack(spacing: compact ? 4 : 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(budget.isOver ? "Oltre il target" : "Rimaste oggi")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.muted)
+                    Spacer()
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(Int(abs(budget.remaining)))")
+                            .font(.system(size: compact ? 15 : 17, weight: .bold, design: .rounded))
+                            .foregroundColor(tint)
+                            .monospacedDigit()
+                        Text("kcal")
+                            .font(.system(size: 11, weight: .semibold)).foregroundColor(.muted)
+                    }
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule()
+                            .fill(tint)
+                            .frame(width: geo.size.width * min(budget.progress, 1))
+                        // Quota eccedente, resa a parte così l'eccesso si vede.
+                        if budget.isOver {
+                            Capsule()
+                                .fill(Color.gymOrange.opacity(0.45))
+                                .frame(width: geo.size.width * min(budget.progress - 1, 1))
+                        }
+                    }
+                }
+                .frame(height: compact ? 5 : 7)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: budget.progress)
+            }
+        }
+    }
+}
+
 // MARK: - Gym Dot
 
 struct GymDot: View {
@@ -139,25 +187,13 @@ struct GymDot: View {
 struct GymDotBackground: ViewModifier {
     let gymColor: GymColor; let isSelected: Bool
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(
-                    isSelected
-                        ? .regular.tint(gymColor.color).interactive()
-                        : .regular,
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous),
-                )
-        } else {
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isSelected ? gymColor.color.opacity(0.18) : Color.card2)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(isSelected ? gymColor.color.opacity(0.5) : .clear, lineWidth: 2)
-                )
-        }
+        content
+            .glassEffect(
+                isSelected
+                    ? .regular.tint(gymColor.color).interactive()
+                    : .regular,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous),
+            )
     }
 }
 
@@ -310,7 +346,7 @@ struct GearBtn: View {
     }
 }
 
-// MARK: - Pill Button (glass-aware on iOS 26+)
+// MARK: - Pill Button
 
 struct PillButton: View {
     let label: String
@@ -320,44 +356,25 @@ struct PillButton: View {
     var prominent: Bool = true
     let action: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        if #available(iOS 26.0, *) {
-            if prominent {
-                Button(action: action) {
-                    Text(label)
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                }
-                .tint(color)
-                .buttonStyle(.glassProminent)
-                .disabled(disabled)
-            } else {
-                Button(action: action) {
-                    Text(label)
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                }
-                .tint(color)
-                .buttonStyle(.glass)
-                .disabled(disabled)
-            }
+        let button = Button(action: action) {
+            Text(label)
+                .font(.system(size: 15, weight: .bold))
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+        }
+        .tint(color)
+        .disabled(disabled)
+
+        if prominent {
+            button.buttonStyle(.glassProminent)
         } else {
-            Button(action: action) {
-                Text(label)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(disabled ? .muted : textColor)
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(
-                        disabled ? Color.card2 : color,
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
-            }
-            .buttonStyle(.plain).disabled(disabled)
+            button.buttonStyle(.glass)
         }
     }
 }
 
-// MARK: - Glass Floating Button (iOS 26+)
+// MARK: - Glass Floating Button
 
 struct GlassButton: View {
     let icon: String
@@ -366,25 +383,12 @@ struct GlassButton: View {
     let action: () -> Void
 
     var body: some View {
-        if #available(iOS 26.0, *) {
-            Button(action: action) {
-                Label(label, systemImage: icon)
-                    .font(.system(size: 14, weight: .bold))
-            }
-            .tint(color)
-            .buttonStyle(.glass)
-        } else {
-            Button(action: action) {
-                HStack(spacing: 6) {
-                    Image(systemName: icon).font(.system(size: 12, weight: .bold))
-                    Text(label).font(.system(size: 13, weight: .bold))
-                }
-                .foregroundColor(color)
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(color.opacity(0.12), in: Capsule())
-            }
-            .buttonStyle(.plain)
+        Button(action: action) {
+            Label(label, systemImage: icon)
+                .font(.system(size: 14, weight: .bold))
         }
+        .tint(color)
+        .buttonStyle(.glass)
     }
 }
 

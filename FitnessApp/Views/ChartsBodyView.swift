@@ -15,7 +15,7 @@ struct ChartsBodyView: View {
 
     // Cache O(1) per giorno
     @State private var kcalByDay: [String: Double] = [:]
-    @State private var sportKcalByDay: [String: Double] = [:]
+    @State private var sportByDay: [String: SportKcal] = [:]
     @State private var logByDay: [String: DayLog] = [:]
     @State private var sortedWeights: [(String, Double)] = []
 
@@ -116,7 +116,7 @@ struct ChartsBodyView: View {
         let daily: [(date: Date, net: Double)] = dates.compactMap { d in
             let eaten = kcalByDay[d.dateKey] ?? 0
             guard eaten > 0 else { return nil }
-            return (d, eaten - totalDailyBurn(for: d))
+            return (d, eaten - dailyBurn(for: d))
         }
         if daily.isEmpty {
             EmptyView()
@@ -204,18 +204,12 @@ struct ChartsBodyView: View {
         sortedWeights.last { $0.0 <= date.dateKey }?.1
     }
 
-    private func totalDailyBurn(for date: Date) -> Double {
-        let log = logByDay[date.dateKey]
-        let activityKcal = Double(log?.burnedKcal ?? 0) + (sportKcalByDay[date.dateKey] ?? 0)
-        if let profile = allProfiles.first,
-           let heightCm = profile.heightCm,
-           let birthDate = profile.birthDate,
-           let w = weight(for: date), w > 0 {
-            let age = Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
-            let bmr = calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
-            return bmr + activityKcal
-        }
-        return activityKcal
+    private func dailyBurn(for date: Date) -> Double {
+        totalDailyBurn(log: logByDay[date.dateKey],
+                       sport: sportByDay[date.dateKey] ?? SportKcal(),
+                       profile: allProfiles.first,
+                       weightKg: weight(for: date),
+                       on: date)
     }
 
     private func fatLossData() -> [(date: Date, kg: Double)] {
@@ -226,7 +220,7 @@ struct ChartsBodyView: View {
         for date in dates {
             let eaten = kcalByDay[date.dateKey] ?? 0
             if eaten == 0 && (logByDay[date.dateKey]?.burnedKcal ?? 0) == 0 { continue }
-            let deficit = totalDailyBurn(for: date) - eaten
+            let deficit = dailyBurn(for: date) - eaten
             cumulative += deficit / 7700.0
             result.append((date, cumulative))
         }
@@ -236,15 +230,14 @@ struct ChartsBodyView: View {
     private func rebuildDicts() {
         var kd = [String: Double]()
         for e in allEntries { kd[e.dayKey, default: 0] += e.kcalSnapshot }
-        var sd = [String: Double]()
-        for s in allSports { sd[s.dayKey, default: 0] += s.kcalBurned }
+        let sd = allSports.sportKcalByDay()
         var ld = [String: DayLog]()
         var sw = [(String, Double)]()
         for log in allLogs {   // sorted ascending
             ld[log.dateKey] = log
             if let w = log.weight { sw.append((log.dateKey, w)) }
         }
-        kcalByDay = kd; sportKcalByDay = sd; logByDay = ld; sortedWeights = sw
+        kcalByDay = kd; sportByDay = sd; logByDay = ld; sortedWeights = sw
     }
 }
 

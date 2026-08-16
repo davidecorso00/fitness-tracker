@@ -124,8 +124,14 @@ func movingAverage(_ values: [(Date, Double)], window: Int = 7) -> [(Date, Doubl
 }
 
 /// Inizio settimana/mese per una data (per i volumi aggregati).
+/// Usa `appCalendar` così "questa settimana" parte sempre di lunedì.
 func periodStart(of date: Date, component: Calendar.Component) -> Date? {
-    Calendar.current.dateInterval(of: component, for: date)?.start
+    appCalendar.dateInterval(of: component, for: date)?.start
+}
+
+/// Settimana corrente, coerente con i grafici aggregati per settimana.
+func currentWeekInterval() -> DateInterval? {
+    appCalendar.dateInterval(of: .weekOfYear, for: Date())
 }
 
 // MARK: - Card panoramica (livello 1)

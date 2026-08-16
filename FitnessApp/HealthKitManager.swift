@@ -5,6 +5,13 @@ import SwiftData
 @MainActor
 final class HealthKitManager {
 
+    /// Istanza unica. L'observer in background resta vivo solo finché è vivo l'oggetto
+    /// che possiede l'`HKHealthStore`: con istanze usa-e-getta la query veniva registrata
+    /// e subito persa insieme al manager deallocato.
+    static let shared = HealthKitManager()
+
+    private init() {}
+
     private let healthStore = HKHealthStore()
 
     private var stepsObserver:  HKObserverQuery?
@@ -122,12 +129,15 @@ final class HealthKitManager {
 
     /// Stream dei nuovi campioni di battito da adesso in poi (per il valore
     /// live durante la corsa). Restituisce la query da fermare con stopQuery.
-    func startHeartRateStream(onSample: @escaping @MainActor (Double) -> Void) -> HKQuery? {
+    func startHeartRateStream(onSample: @escaping @MainActor @Sendable (Double) -> Void) -> HKQuery? {
         guard isAvailable else { return nil }
         let predicate = HKQuery.predicateForSamples(withStart: Date(), end: nil)
-        let handler: (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { _, samples, _, _, _ in
+        // HealthKit invoca l'handler su una coda propria: dev'essere @Sendable,
+        // e il valore torna sul main actor via Task.
+        let handler: @Sendable (HKAnchoredObjectQuery, [HKSample]?, [HKDeletedObject]?, HKQueryAnchor?, Error?) -> Void = { _, samples, _, _, _ in
             guard let last = (samples as? [HKQuantitySample])?.max(by: { $0.startDate < $1.startDate }) else { return }
-            let bpm = last.quantity.doubleValue(for: HealthKitManager.bpmUnit)
+            // Unità creata qui: quella statica è isolata al main actor.
+            let bpm = last.quantity.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
             Task { @MainActor in onSample(bpm) }
         }
         let query = HKAnchoredObjectQuery(

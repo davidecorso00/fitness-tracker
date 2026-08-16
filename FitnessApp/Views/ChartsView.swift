@@ -114,8 +114,8 @@ struct ChartsView: View {
     }
 
     private var gymCard: some View {
-        let cal = Calendar.current
-        let week = cal.dateInterval(of: .weekOfYear, for: Date())
+        let cal = appCalendar
+        let week = currentWeekInterval()
         let thisWeek = allWorkoutSessions.filter { week?.contains($0.date) ?? false }.count
         // Sessioni per settimana, ultime 7 settimane
         var byWeek = [Date: Double]()
@@ -137,7 +137,7 @@ struct ChartsView: View {
     }
 
     private var runCard: some View {
-        let week = Calendar.current.dateInterval(of: .weekOfYear, for: Date())
+        let week = currentWeekInterval()
         let weekKm = allRunSessions.reduce(0.0) {
             (week?.contains($1.date) ?? false) ? $0 + $1.distanceKm : $0
         }

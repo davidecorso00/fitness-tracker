@@ -4,23 +4,37 @@ import UserNotifications
 
 // MARK: - Notification helper
 
-private enum MedicineNotifications {
-    static func requestPermission() {
+enum MedicineNotifications {
+    nonisolated static func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    /// Dati minimi per programmare un promemoria, senza portarsi dietro il modello
+    /// SwiftData (che non va passato fra thread).
+    struct Plan: Sendable {
+        let stableId: String
+        let name: String
+        let hour: Int
+        let minute: Int
     }
 
     static func schedule(_ medicine: Medicine) {
         guard medicine.notificationEnabled else { return }
+        schedule(Plan(stableId: medicine.stableId, name: medicine.name,
+                      hour: medicine.notificationHour, minute: medicine.notificationMinute))
+    }
+
+    nonisolated static func schedule(_ plan: Plan) {
         let content = UNMutableNotificationContent()
-        content.title = medicine.name
-        content.body = "Non hai ancora preso \(medicine.name) oggi."
+        content.title = plan.name
+        content.body = "Non hai ancora preso \(plan.name) oggi."
         content.sound = .default
         var comps = DateComponents()
-        comps.hour = medicine.notificationHour
-        comps.minute = medicine.notificationMinute
+        comps.hour = plan.hour
+        comps.minute = plan.minute
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
         let request = UNNotificationRequest(
-            identifier: "farmacia-\(medicine.stableId)",
+            identifier: "farmacia-\(plan.stableId)",
             content: content, trigger: trigger
         )
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
@@ -29,6 +43,25 @@ private enum MedicineNotifications {
     static func cancel(stableId: String) {
         UNUserNotificationCenter.current()
             .removePendingNotificationRequests(withIdentifiers: ["farmacia-\(stableId)"])
+    }
+
+    /// Azzera i promemoria esistenti e li riprogramma dai farmaci indicati.
+    /// Serve dopo un ripristino da backup: i promemoria vecchi puntano a farmaci
+    /// che non esistono più, e quelli ripristinati non sono ancora programmati.
+    static func rescheduleAll(_ medicines: [Medicine]) {
+        // I dati vengono letti qui, sul main actor, prima di entrare nel completion
+        // handler di UNUserNotificationCenter che gira su una coda di sistema.
+        let plans = medicines.filter(\.notificationEnabled).map {
+            Plan(stableId: $0.stableId, name: $0.name,
+                 hour: $0.notificationHour, minute: $0.notificationMinute)
+        }
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { pending in
+            let stale = pending.map(\.identifier).filter { $0.hasPrefix("farmacia-") }
+            center.removePendingNotificationRequests(withIdentifiers: stale)
+            if !plans.isEmpty { requestPermission() }
+            plans.forEach(schedule)
+        }
     }
 
     // Re-schedules any medicine whose repeating notification was cancelled (e.g. taken yesterday).

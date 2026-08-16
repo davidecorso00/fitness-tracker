@@ -48,36 +48,17 @@ struct TodayView: View {
         }
     }
 
-    private var sportBurned: Double {
-        todaySports.reduce(0.0) { $0 + $1.kcalBurned }
+    /// Calorie di movimento del giorno mostrato (esclude gli sport già coperti da Health).
+    private var activityBurnedToday: Double {
+        activityKcal(log: dayLog, sports: todaySports)
     }
 
     // ── BMR helpers ──────────────────────────────────────────────────────
 
-    private func totalDailyBurn(dateKey: String, date: Date, extraSport: Double,
-                                 logByDay: [String: DayLog], weightByDay: [String: Double]) -> Double {
-        let log          = logByDay[dateKey]
-        let activityKcal = Double(log?.burnedKcal ?? 0) + extraSport
-
-        if let profile = allProfiles.first,
-           let heightCm = profile.heightCm,
-           let birthDate = profile.birthDate,
-           let w = weightByDay[dateKey], w > 0 {
-            let age = Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
-            let bmr = calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
-            return bmr + activityKcal
-        }
-        return activityKcal
-    }
-
     private var bmrToday: Double {
-        guard let profile = allProfiles.first,
-              let heightCm = profile.heightCm,
-              let birthDate = profile.birthDate else { return 0 }
-        let w = dayLog?.weight ?? lastKnownWeight ?? 0
-        guard w > 0 else { return 0 }
-        let age = Calendar.current.dateComponents([.year], from: birthDate, to: appState.currentDate).year ?? 0
-        return calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
+        restingKcal(profile: allProfiles.first,
+                    weightKg: dayLog?.weight ?? lastKnownWeight,
+                    on: appState.currentDate)
     }
 
     // O(1) lookup on reverse-sorted allLogs
@@ -89,7 +70,7 @@ struct TodayView: View {
     private func refreshStreak() {
         // Pre-build O(n) dicts so the 365-day loop uses O(1) lookups
         let kcalByDay   = allEntries.reduce(into: [String: Double]()) { $0[$1.dayKey, default: 0] += $1.kcalSnapshot }
-        let sportByDay  = allSports.reduce(into: [String: Double]())  { $0[$1.dayKey, default: 0] += $1.kcalBurned }
+        let sportByDay  = allSports.sportKcalByDay()
         // Build running last-known-weight per day (allLogs is sorted reverse; reverse again for forward pass)
         var weightByDay = [String: Double]()
         var lastW: Double? = nil
@@ -108,9 +89,11 @@ struct TodayView: View {
                 if date.isToday { date = date.adding(days: -1); continue }
                 break
             }
-            let sportKcal = sportByDay[key] ?? 0
-            let burned = totalDailyBurn(dateKey: key, date: date, extraSport: sportKcal,
-                                        logByDay: logByDay, weightByDay: weightByDay)
+            let burned = totalDailyBurn(log: logByDay[key],
+                                        sport: sportByDay[key] ?? SportKcal(),
+                                        profile: allProfiles.first,
+                                        weightKg: weightByDay[key],
+                                        on: date)
             if eaten < burned { streak += 1 } else { break }
             date = date.adding(days: -1)
         }
@@ -189,9 +172,8 @@ struct TodayView: View {
 
                         // TRIPLE RING CARD
                         if let lim = limits {
-                            let log           = dayLog ?? placeholderLog
-                            let activityBurned = Double(log.burnedKcal) + sportBurned
-                            let totalBurned   = bmrToday + activityBurned
+                            let log         = dayLog ?? placeholderLog
+                            let totalBurned = bmrToday + activityBurnedToday
                             TripleRingCard(
                                 eaten: totals.kcal, kcalTarget: lim.kcalTarget,
                                 protein: totals.protein, proteinTarget: lim.proteinTarget,
@@ -276,20 +258,7 @@ struct TodayView: View {
                             HTCard {
                                 VStack(alignment: .leading, spacing: 10) {
                                     SectionLabel(text: "Palestra oggi")
-                                    if #available(iOS 26.0, *) {
-                                        GlassEffectContainer {
-                                            HStack(spacing: 0) {
-                                                ForEach(GymColor.allCases, id: \.self) { gc in
-                                                    GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
-                                                        log.gymColor = gc
-                                                        try? context.save()
-                                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                                    }
-                                                    .frame(maxWidth: .infinity)
-                                                }
-                                            }
-                                        }
-                                    } else {
+                                    GlassEffectContainer {
                                         HStack(spacing: 0) {
                                             ForEach(GymColor.allCases, id: \.self) { gc in
                                                 GymDot(gymColor: gc, isSelected: log.gymColor == gc) {

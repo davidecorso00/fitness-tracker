@@ -13,13 +13,15 @@ final class ActiveWorkoutSession {
     let templateName: String
     let startTime: Date = Date()
     var entryVMs: [ActiveEntryVM] = []
-    var elapsedSeconds: Int = 0
-    var isResting: Bool = false
-    var restSecondsLeft: Int = 0
     var isInitialized: Bool = false
 
+    /// Orologio aggiornato ogni secondo dal timer. Tutti i valori mostrati derivano da
+    /// differenze fra date reali, quindi restano corretti anche se l'app viene sospesa e
+    /// il timer perde qualche tick: al ritorno in foreground il conteggio si riallinea.
+    private var tick: Date = Date()
+    private var restEndDate: Date?
+
     private var elapsedTask: Task<Void, Never>?
-    private var restTask: Task<Void, Never>?
 
     init(template: WorkoutTemplate?) {
         self.template = template
@@ -27,10 +29,20 @@ final class ActiveWorkoutSession {
         startElapsedTimer()
     }
 
+    var elapsedSeconds: Int { max(0, Int(tick.timeIntervalSince(startTime))) }
+
+    var isResting: Bool { restEndDate != nil }
+
+    var restSecondsLeft: Int {
+        guard let end = restEndDate else { return 0 }
+        return max(0, Int(end.timeIntervalSince(tick).rounded(.up)))
+    }
+
     var elapsedDisplay: String {
-        let h = elapsedSeconds / 3600
-        let m = (elapsedSeconds % 3600) / 60
-        let s = elapsedSeconds % 60
+        let total = elapsedSeconds
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
         if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
         return String(format: "%02d:%02d", m, s)
     }
@@ -38,43 +50,35 @@ final class ActiveWorkoutSession {
     private func startElapsedTimer() {
         elapsedTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
+                self?.tick = Date()
+                self?.expireRestIfNeeded()
                 try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                self?.elapsedSeconds += 1
             }
         }
     }
 
     func startRest(seconds: Int) {
-        restTask?.cancel()
-        restSecondsLeft = seconds
-        isResting = true
+        tick = Date()
+        restEndDate = Date().addingTimeInterval(Double(seconds))
         startRestActivity(seconds: seconds)
-        restTask = Task { @MainActor [weak self] in
-            var s = seconds
-            while s > 0 && !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                s -= 1
-                self?.restSecondsLeft = s
-            }
-            if !Task.isCancelled {
-                self?.isResting = false
-                self?.endRestActivity()
-            }
-        }
     }
 
     func skipRest() {
-        restTask?.cancel()
-        restSecondsLeft = 0
-        isResting = false
+        restEndDate = nil
+        endRestActivity()
+    }
+
+    /// Chiude il recupero quando il countdown è scaduto (anche dopo una sospensione).
+    private func expireRestIfNeeded() {
+        guard let end = restEndDate, Date() >= end else { return }
+        restEndDate = nil
         endRestActivity()
     }
 
     func stop() {
         elapsedTask?.cancel()
-        restTask?.cancel()
+        elapsedTask = nil
+        restEndDate = nil
         endRestActivity()
     }
 
@@ -115,7 +119,7 @@ final class AppState: ObservableObject {
     @Published var activeWorkoutSession: ActiveWorkoutSession? = nil
     @Published var showWorkoutSheet: Bool = false
 
-    let healthKit = HealthKitManager()
+    let healthKit = HealthKitManager.shared
 
     func goBack()    { currentDate = currentDate.adding(days: -1) }
     func goForward() { currentDate = currentDate.adding(days: 1) }
@@ -428,13 +432,6 @@ final class AppState: ObservableObject {
         var salt: Double = 0
     }
 
-    func sportEntries(for dateKey: String, context: ModelContext) -> [SportEntry] {
-        let descriptor = FetchDescriptor<SportEntry>(
-            predicate: #Predicate { $0.dayKey == dateKey }
-        )
-        return (try? context.fetch(descriptor)) ?? []
-    }
-
     func totals(for dateKey: String, context: ModelContext) -> DayTotals {
         let descriptor = FetchDescriptor<FoodEntry>(
             predicate: #Predicate { $0.dayKey == dateKey }
@@ -452,16 +449,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func sportKcal(for dateKey: String, context: ModelContext) -> Double {
-        let descriptor = FetchDescriptor<SportEntry>(
-            predicate: #Predicate { $0.dayKey == dateKey }
-        )
-        let entries = (try? context.fetch(descriptor)) ?? []
-        return entries.reduce(0.0) { $0 + $1.kcalBurned }
-    }
-
-    func totalBurned(for dateKey: String, context: ModelContext) -> Double {
-        let log = dayLog(for: dateKey, context: context)
-        return Double(log.burnedKcal) + sportKcal(for: dateKey, context: context)
-    }
+    // Il calcolo delle calorie bruciate vive in Models.swift (`activityKcal`,
+    // `restingKcal`, `totalDailyBurn`): un'unica implementazione condivisa da
+    // Sommario, Grafici, Risultati e Predizioni.
 }

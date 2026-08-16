@@ -6,15 +6,10 @@ struct RootView: View {
     @StateObject private var appState = AppState()
     @State private var selectedTab = 0
     @State private var showSettings = false
+    @State private var preservedStorePath: String?
 
     var body: some View {
-        Group {
-            if #available(iOS 18.0, *) {
-                modernTabView
-            } else {
-                legacyTabView
-            }
-        }
+        tabView
         .environmentObject(appState)
         .onAppear {
             appState.seedFoodsIfNeeded(context: context)
@@ -22,6 +17,28 @@ struct RootView: View {
             appState.migrateExercisesIfNeeded(context: context)
             appState.migrateTemplateExercisesIfNeeded(context: context)
             appState.setupInitialTargets(context: context)
+            preservedStorePath = StoreRecovery.preservedPath
+        }
+        .alert("Database ripartito da zero", isPresented: Binding(
+            get: { preservedStorePath != nil },
+            set: { if !$0 { preservedStorePath = nil } }
+        )) {
+            Button("Ripristina un backup") {
+                StoreRecovery.clear()
+                preservedStorePath = nil
+                showSettings = true
+            }
+            Button("Ho capito", role: .cancel) {
+                StoreRecovery.clear()
+                preservedStorePath = nil
+            }
+        } message: {
+            Text("""
+                 Non è stato possibile aprire il database esistente, così l'app è ripartita con \
+                 uno vuoto. I dati vecchi non sono stati cancellati: sono al sicuro sul \
+                 dispositivo. Puoi rimettere tutto a posto importando l'ultimo backup dalle \
+                 impostazioni.
+                 """)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView().environmentObject(appState)
@@ -48,10 +65,9 @@ struct RootView: View {
         }
     }
 
-    // MARK: - iOS 18+ Tab API (gets Liquid Glass on iOS 26 automatically)
+    // MARK: - Tab bar
 
-    @available(iOS 18.0, *)
-    private var modernTabView: some View {
+    private var tabView: some View {
         TabView(selection: $selectedTab) {
             Tab("Sommario", systemImage: "heart.fill", value: 0) {
                 TodayView(showSettings: $showSettings)
@@ -79,43 +95,7 @@ struct RootView: View {
             }
         }
         .tint(.ringRed)
-        .modifier(TabMinimizeModifier())
-    }
-
-    // MARK: - iOS 17 fallback
-
-    private var legacyTabView: some View {
-        TabView(selection: $selectedTab) {
-            TodayView(showSettings: $showSettings)
-                .tabItem { Label("Sommario", systemImage: "heart.fill") }.tag(0)
-            CiboView(showSettings: $showSettings)
-                .tabItem { Label("Cibo", systemImage: "fork.knife") }.tag(1)
-            FarmaciaView(showSettings: $showSettings)
-                .tabItem { Label("Farmacia", systemImage: "cross.case.fill") }.tag(2)
-            PalestraView(showSettings: $showSettings)
-                .tabItem { Label("Palestra", systemImage: "dumbbell.fill") }.tag(3)
-            RunView(showSettings: $showSettings)
-                .tabItem { Label("Cardio", systemImage: "figure.run") }.tag(7)
-            ChartsView(showSettings: $showSettings)
-                .tabItem { Label("Grafici", systemImage: "chart.xyaxis.line") }.tag(4)
-            PredictionsView(showSettings: $showSettings)
-                .tabItem { Label("Predizioni", systemImage: "chart.line.uptrend.xyaxis") }.tag(5)
-            ResultsView(showSettings: $showSettings)
-                .tabItem { Label("Risultati", systemImage: "trophy.fill") }.tag(6)
-        }
-        .tint(.ringRed)
-    }
-}
-
-// MARK: - Tab Minimize Modifier (iOS 26+)
-
-struct TabMinimizeModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.tabBarMinimizeBehavior(.onScrollDown)
-        } else {
-            content
-        }
+        .tabBarMinimizeBehavior(.onScrollDown)
     }
 }
 
