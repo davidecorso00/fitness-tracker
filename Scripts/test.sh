@@ -65,6 +65,10 @@ run_suite "logica-calorie" \
   "$BUILD/MealTypeStub.swift" \
   "$ROOT/Tests/CalorieLogic/main.swift"
 
+run_suite "logica-palestra" \
+  "$ROOT/FitnessApp/GymLogic.swift" \
+  "$ROOT/Tests/GymLogic/main.swift"
+
 echo ""
 if [ "$fail" -eq 0 ]; then
   echo "✓ Tutte le suite superate"

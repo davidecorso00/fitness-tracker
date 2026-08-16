@@ -478,10 +478,24 @@ struct WorkoutSessionView: View {
         if i < session.entryVMs.count {
             ActiveEntryCard(
                 entry: Binding(get: { session.entryVMs[i] }, set: { session.entryVMs[i] = $0 }),
+                advice: advice(for: session.entryVMs[i].exerciseName),
                 onDeleteEntry: { deleteEntry(at: i) },
                 onCompleteSet: { j in completeSet(entry: i, set: j) }
             )
         }
+    }
+
+    /// Cosa propone lo storico per il prossimo carico di questo esercizio.
+    private func advice(for exerciseName: String) -> ProgressionAdvice {
+        let history: [ExerciseSessionRecord] = allSessions.compactMap { sess in
+            guard let entry = sess.entries.first(where: { $0.exerciseName == exerciseName })
+            else { return nil }
+            return ExerciseSessionRecord(
+                date: sess.date,
+                sets: entry.sets.map { SetRecord(reps: $0.reps, weight: $0.weight, completed: $0.completed) })
+        }
+        guard !history.isEmpty else { return .notEnoughData }
+        return progressionAdvice(history: Array(history.prefix(5)))
     }
 
     private func deleteEntry(at i: Int) {
@@ -613,8 +627,17 @@ struct WorkoutSessionView: View {
 
 struct ActiveEntryCard: View {
     @Binding var entry: ActiveEntryVM
+    var advice: ProgressionAdvice = .notEnoughData
     let onDeleteEntry: () -> Void
     let onCompleteSet: (Int) -> Void
+
+    @State private var showPlateCalc = false
+
+    /// Carico su cui aprire il calcolatore dischi: l'ultima serie compilata.
+    private var referenceWeight: Double {
+        let weights = entry.sets.compactMap { Double($0.weight.replacingOccurrences(of: ",", with: ".")) }
+        return weights.last(where: { $0 > 0 }) ?? weights.first ?? 0
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -628,11 +651,33 @@ struct ActiveEntryCard: View {
                     }
                 }
                 Spacer()
+                Button { showPlateCalc = true } label: {
+                    Image(systemName: "circle.hexagongrid.fill")
+                        .font(.system(size: 17)).foregroundColor(.gymBlue)
+                        .padding(.trailing, 4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Calcolo dischi")
                 Button(action: onDeleteEntry) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 20)).foregroundColor(Color(hex: "555555"))
                 }
                 .buttonStyle(.plain)
+            }
+
+            // Cosa dice lo storico. Suggerimento, non prescrizione.
+            if advice != .notEnoughData {
+                HStack(spacing: 8) {
+                    Image(systemName: advice.icon)
+                        .font(.system(size: 13)).foregroundColor(adviceColor)
+                    Text(advice.message)
+                        .font(.system(size: 12, weight: .medium)).foregroundColor(adviceColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(adviceColor.opacity(0.10),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             HStack {
@@ -671,6 +716,19 @@ struct ActiveEntryCard: View {
         .padding(16)
         .background(Color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.04), lineWidth: 0.5))
+        .sheet(isPresented: $showPlateCalc) {
+            PlateCalculatorSheet(initialWeight: referenceWeight)
+        }
+    }
+
+    private var adviceColor: Color {
+        switch advice {
+        case .increaseWeight: return .gymGreen
+        case .addReps:        return .gymBlue
+        case .hold:           return .muted
+        case .deload:         return .gymOrange
+        case .notEnoughData:  return .muted
+        }
     }
 }
 
