@@ -165,6 +165,8 @@ struct SettingsView: View {
 
                             MealRemindersCard()
 
+                            PausaVisibilityCard()
+
                             SoftModeCard()
 
                             AppleHealthCard()

@@ -132,8 +132,8 @@ struct TodayView: View {
                         }
                         Spacer()
                         NavBtn(icon: "chevron.right", disabled: !appState.canGoForward) { appState.goForward() }
-                        PausaBtn().padding(.leading, 4)
-                        GearBtn { showSettings = true }
+                        PausaBtn()
+                        GearBtn { showSettings = true }.padding(.leading, 4)
                     }
                     .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
 

@@ -195,18 +195,47 @@ struct PageHeader: View {
 /// non si accende mai in reazione a quello che hai mangiato — sarebbe un
 /// giudizio travestito da aiuto.
 struct PausaBtn: View {
+    /// Nascosto per ora. Lo spazio resta raggiungibile da Siri, dal Centro di
+    /// Controllo e da dcfitness://pausa; l'interruttore è in Impostazioni.
+    @AppStorage(PausaBtn.visibileKey) private var visibile = false
+    static let visibileKey = "mostraPulsantePausa"
+
     var body: some View {
-        Button {
-            NotificationCenter.default.post(name: .apriPausa, object: nil)
-        } label: {
-            Image(systemName: "wind")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(Pausa.seafoam)
-                .frame(width: 36, height: 36)
-                .background(Color.card, in: Circle())
+        if visibile {
+            Button {
+                NotificationCenter.default.post(name: .apriPausa, object: nil)
+            } label: {
+                Image(systemName: "wind")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(Pausa.seafoam)
+                    .frame(width: 36, height: 36)
+                    .background(Color.card, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Un attimo")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Un attimo")
+    }
+}
+
+/// Rimette (o toglie) il pulsante "Un attimo" dalle intestazioni.
+struct PausaVisibilityCard: View {
+    @AppStorage(PausaBtn.visibileKey) private var visibile = false
+
+    var body: some View {
+        LimitGroup(title: "Un attimo") {
+            Toggle(isOn: $visibile) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pulsante nelle schermate")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Color(hex: "cccccc"))
+                    Text("Anche nascosto, lo spazio si apre da Siri o dal Centro di Controllo.")
+                        .font(.system(size: 11)).foregroundColor(.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(.acc)
+            .padding(.horizontal, 18).padding(.bottom, 14)
+        }
     }
 }
 
