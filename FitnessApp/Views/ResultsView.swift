@@ -50,8 +50,9 @@ struct ResultsView: View {
         let sportByDay = allSports.sportKcalByDay()
         let logByDay   = allLogs.reduce(into: [String: DayLog]()) { $0[$1.dateKey] = $1 }
 
-        // Running last-known weight (allLogs is sorted ascending by dateKey)
-        var lastWeight: Double? = nil
+        // Running last-known weight (allLogs is sorted ascending by dateKey).
+        // Prima della prima pesata si usa la prima disponibile.
+        var lastWeight: Double? = allLogs.first { $0.weight != nil }?.weight
 
         let profile = allProfiles.first
         var s = Stats()
@@ -75,8 +76,11 @@ struct ResultsView: View {
             if eaten > 0 { s.totalKcalEaten += eaten; daysWithKcal += 1 }
             if activity > 0 { s.totalKcalBurned += activity; daysWithBurn += 1 }
 
-            if eaten > 0 {
-                let totalBurn = restingKcal(profile: profile, weightKg: lastWeight, on: date) + activity
+            // Senza basale (profilo incompleto) il giorno non entra nel deficit:
+            // contarlo come 0 lo farebbe sembrare un surplus di ~2000 kcal.
+            let resting = restingKcal(profile: profile, weightKg: lastWeight, on: date)
+            if eaten > 0, resting > 0 {
+                let totalBurn = resting + activity
                 let deficit = totalBurn - eaten
                 s.totalDeficit += deficit
                 s.fatLostKg    += deficit / 7700.0

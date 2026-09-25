@@ -392,9 +392,14 @@ func restingKcal(profile: UserProfile?, weightKg: Double?, on date: Date) -> Dou
 }
 
 /// Totale bruciato nel giorno: riposo + movimento.
+/// Consumo totale del giorno. `nil` se il metabolismo basale non si può calcolare
+/// (profilo senza altezza o data di nascita, oppure nessun peso): contarlo come 0
+/// farebbe sembrare ogni giorno un surplus pari al basale, circa 2000 kcal.
 func totalDailyBurn(log: DayLog?, sport: SportKcal, profile: UserProfile?,
-                    weightKg: Double?, on date: Date) -> Double {
-    restingKcal(profile: profile, weightKg: weightKg, on: date) + activityKcal(log: log, sport: sport)
+                    weightKg: Double?, on date: Date) -> Double? {
+    let resting = restingKcal(profile: profile, weightKg: weightKg, on: date)
+    guard resting > 0 else { return nil }
+    return resting + activityKcal(log: log, sport: sport)
 }
 
 // MARK: - Calendario

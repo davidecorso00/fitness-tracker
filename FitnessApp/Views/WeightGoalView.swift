@@ -67,8 +67,8 @@ struct WeightGoalSection: View {
 
     // MARK: - Burn calculation
 
-    private func dailyBurn(log: DayLog, sports: [String: SportKcal]) -> Double {
-        guard let d = date(from: log.dateKey) else { return 0 }
+    private func dailyBurn(log: DayLog, sports: [String: SportKcal]) -> Double? {
+        guard let d = date(from: log.dateKey) else { return nil }
         return totalDailyBurn(log: log,
                               sport: sports[log.dateKey] ?? SportKcal(),
                               profile: profile,
@@ -92,8 +92,12 @@ struct WeightGoalSection: View {
         }
         guard !qualifying.isEmpty else { return DeficitWindow(label: label, avgDeficit: 0, count: 0) }
         let sports = sportByDay
-        let total = qualifying.reduce(0.0) { $0 + dailyBurn(log: $1, sports: sports) - (kcal[$1.dateKey] ?? 0) }
-        return DeficitWindow(label: label, avgDeficit: total / Double(qualifying.count), count: qualifying.count)
+        let deficits = qualifying.compactMap { log in
+            dailyBurn(log: log, sports: sports).map { $0 - (kcal[log.dateKey] ?? 0) }
+        }
+        guard !deficits.isEmpty else { return DeficitWindow(label: label, avgDeficit: 0, count: 0) }
+        let total = deficits.reduce(0, +)
+        return DeficitWindow(label: label, avgDeficit: total / Double(deficits.count), count: deficits.count)
     }
 
     private var w7:  DeficitWindow { window(7,  label: "7 gg") }

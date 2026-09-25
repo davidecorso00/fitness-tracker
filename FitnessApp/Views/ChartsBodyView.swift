@@ -115,8 +115,8 @@ struct ChartsBodyView: View {
     @ViewBuilder private var calorieBalanceChart: some View {
         let daily: [(date: Date, net: Double)] = dates.compactMap { d in
             let eaten = kcalByDay[d.dateKey] ?? 0
-            guard eaten > 0 else { return nil }
-            return (d, eaten - dailyBurn(for: d))
+            guard eaten > 0, let burn = dailyBurn(for: d) else { return nil }
+            return (d, eaten - burn)
         }
         if daily.isEmpty {
             EmptyView()
@@ -200,11 +200,13 @@ struct ChartsBodyView: View {
         } bigValue: { EmptyView() }
     }
 
+    /// Ultimo peso registrato fino a quel giorno; per i giorni prima della prima
+    /// pesata si usa la prima disponibile.
     private func weight(for date: Date) -> Double? {
-        sortedWeights.last { $0.0 <= date.dateKey }?.1
+        sortedWeights.last { $0.0 <= date.dateKey }?.1 ?? sortedWeights.first?.1
     }
 
-    private func dailyBurn(for date: Date) -> Double {
+    private func dailyBurn(for date: Date) -> Double? {
         totalDailyBurn(log: logByDay[date.dateKey],
                        sport: sportByDay[date.dateKey] ?? SportKcal(),
                        profile: allProfiles.first,
@@ -218,9 +220,11 @@ struct ChartsBodyView: View {
         var cumulative = 0.0
         var result: [(Date, Double)] = []
         for date in dates {
+            // Solo i giorni con il cibo registrato, come nel bilancio calorico e nei
+            // Risultati: un giorno senza pasti conterebbe tutto il consumo come deficit.
             let eaten = kcalByDay[date.dateKey] ?? 0
-            if eaten == 0 && (logByDay[date.dateKey]?.burnedKcal ?? 0) == 0 { continue }
-            let deficit = dailyBurn(for: date) - eaten
+            guard eaten > 0, let burn = dailyBurn(for: date) else { continue }
+            let deficit = burn - eaten
             cumulative += deficit / 7700.0
             result.append((date, cumulative))
         }
