@@ -5,7 +5,10 @@ import Charts
 // MARK: - Corsa: record, distanza, passo, volumi
 
 struct ChartsRunStatsView: View {
-    @Query(sort: \RunSession.date) private var allRunSessions: [RunSession]
+    /// Solo corse: le passeggiate stanno nello stesso modello ma non devono
+    /// finire nei record di passo e nei km di corsa.
+    @Query(filter: #Predicate<RunSession> { $0.activityKind != "walk" },
+           sort: \RunSession.date) private var allRunSessions: [RunSession]
 
     @State private var period: StatPeriod = .threeMonths
 

@@ -21,6 +21,7 @@ struct RunActivityAttributes: ActivityAttributes {
         var bpm: Double?
         var phaseName: String?   // fase corrente nei cicli (es. "Lavoro 2/4")
     }
+    var isWalk: Bool = false     // passeggiata: cambia icona e titolo
 }
 
 // MARK: - Riposo palestra

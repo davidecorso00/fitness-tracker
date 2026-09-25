@@ -16,6 +16,7 @@ struct RunActivityAttributes: ActivityAttributes {
         var bpm: Double?
         var phaseName: String?
     }
+    var isWalk: Bool = false
 }
 
 struct RestActivityAttributes: ActivityAttributes {
@@ -30,6 +31,7 @@ struct RestActivityAttributes: ActivityAttributes {
 
 private let activityBg = Color(red: 19/255, green: 19/255, blue: 29/255)
 private let runCyan    = Color(red: 100/255, green: 210/255, blue: 255/255)
+private let walkGreen  = Color(red: 48/255,  green: 209/255, blue: 88/255)
 private let restOrange = Color(red: 255/255, green: 159/255, blue: 10/255)
 private let kcalRed    = Color(red: 250/255, green: 17/255, blue: 79/255)
 private let paceGreen  = Color(red: 146/255, green: 232/255, blue: 42/255)
@@ -45,6 +47,14 @@ private func activityDurationString(_ seconds: Double) -> String {
     let h = t / 3600, m = (t % 3600) / 60, s = t % 60
     if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
     return String(format: "%02d:%02d", m, s)
+}
+
+// MARK: - Corsa o passeggiata
+
+private extension RunActivityAttributes {
+    var icon: String { isWalk ? "figure.walk" : "figure.run" }
+    var title: String { isWalk ? "Passeggiata" : "Corsa" }
+    var accent: Color { isWalk ? walkGreen : runCyan }
 }
 
 // MARK: - Run chrono (system-driven, niente update ogni secondo)
@@ -78,10 +88,10 @@ struct RunLiveActivity: Widget {
                 // ── Espanso ──────────────────────────────────────────────
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 6) {
-                        Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+                        Image(systemName: context.state.isPaused ? "pause.fill" : context.attributes.icon)
                             .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(runCyan)
-                        Text(context.state.isPaused ? "In pausa" : "Corsa")
+                            .foregroundStyle(context.attributes.accent)
+                        Text(context.state.isPaused ? "In pausa" : context.attributes.title)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.7))
                     }
@@ -90,7 +100,7 @@ struct RunLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
                         .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(runCyan)
+                        .foregroundStyle(context.attributes.accent)
                         .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
@@ -111,18 +121,18 @@ struct RunLiveActivity: Widget {
                     .padding(.top, 6)
                 }
             } compactLeading: {
-                Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
-                    .foregroundStyle(runCyan)
+                Image(systemName: context.state.isPaused ? "pause.fill" : context.attributes.icon)
+                    .foregroundStyle(context.attributes.accent)
             } compactTrailing: {
                 Text(String(format: "%.1f km", context.state.distanceMeters / 1000))
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(runCyan)
+                    .foregroundStyle(context.attributes.accent)
             } minimal: {
-                Image(systemName: "figure.run")
-                    .foregroundStyle(runCyan)
+                Image(systemName: context.attributes.icon)
+                    .foregroundStyle(context.attributes.accent)
             }
-            .keylineTint(runCyan)
+            .keylineTint(context.attributes.accent)
         }
         .supplementalActivityFamilies([.small])   // Smart Stack su Apple Watch (watchOS 11+)
     }
@@ -160,9 +170,9 @@ private struct RunActivityLockView: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
-                    Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+                    Image(systemName: context.state.isPaused ? "pause.fill" : context.attributes.icon)
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(runCyan)
+                        .foregroundStyle(context.attributes.accent)
                     if let phase = context.state.phaseName {
                         Text(phase)
                             .font(.system(size: 11, weight: .semibold))
@@ -177,7 +187,7 @@ private struct RunActivityLockView: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
                     .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .monospacedDigit().foregroundStyle(runCyan)
+                    .monospacedDigit().foregroundStyle(context.attributes.accent)
                 if let bpm = context.state.bpm {
                     HStack(spacing: 2) {
                         Image(systemName: "heart.fill").font(.system(size: 9))
@@ -194,11 +204,11 @@ private struct RunActivityLockView: View {
 
     private var lockScreenView: some View {
         HStack(spacing: 14) {
-            Image(systemName: context.state.isPaused ? "pause.fill" : "figure.run")
+            Image(systemName: context.state.isPaused ? "pause.fill" : context.attributes.icon)
                 .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(runCyan)
+                .foregroundStyle(context.attributes.accent)
                 .frame(width: 44, height: 44)
-                .background(runCyan.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(context.attributes.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 if let phase = context.state.phaseName {
@@ -211,7 +221,7 @@ private struct RunActivityLockView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(runCyan)
+                    .foregroundStyle(context.attributes.accent)
             }
 
             VStack(alignment: .trailing, spacing: 5) {

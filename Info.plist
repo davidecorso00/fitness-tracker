@@ -9,7 +9,7 @@
     <key>NSHealthUpdateUsageDescription</key>
     <string>FitnessApp salva su Apple Health i tuoi allenamenti e il peso registrato, così restano visibili anche nelle app Salute e Fitness. Puoi disattivarlo dalle impostazioni.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>La posizione serve a tracciare il percorso, la distanza e il passo delle tue corse.</string>
+    <string>La posizione serve a tracciare il percorso, la distanza e il passo delle tue corse e passeggiate.</string>
     <key>NSSupportsLiveActivities</key>
     <true/>
     <key>CFBundleURLTypes</key>

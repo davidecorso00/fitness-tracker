@@ -138,11 +138,12 @@ struct ChartsView: View {
 
     private var runCard: some View {
         let week = currentWeekInterval()
-        let weekKm = allRunSessions.reduce(0.0) {
+        let runs = allRunSessions.filter { !$0.isWalk }   // le passeggiate non sono corse
+        let weekKm = runs.reduce(0.0) {
             (week?.contains($1.date) ?? false) ? $0 + $1.distanceKm : $0
         }
         var kmByDay = [String: Double]()
-        for r in allRunSessions { kmByDay[r.dayKey, default: 0] += r.distanceKm }
+        for r in runs { kmByDay[r.dayKey, default: 0] += r.distanceKm }
         return OverviewCard(
             title: "Corsa", icon: "figure.run", color: .gymCyan,
             keyValue: String(format: "%.1f km", weekKm),

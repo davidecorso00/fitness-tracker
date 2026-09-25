@@ -66,6 +66,7 @@ struct RunSessionBackup: Codable {
     var avgHeartRate: Double?; var maxHeartRate: Double?
     var heartRate: [HRPoint]?
     var stableId: String?
+    var activityKind: String?   // nil = corsa, "walk" = passeggiata
 }
 
 struct ExerciseBackup: Codable {

@@ -28,10 +28,12 @@ private func secString(_ s: Int) -> String {
 }
 
 // MARK: - Jump Rope View (la zona corda)
+//
+// Contenuto della scheda "Corda" nella sezione Cardio: sta dentro lo ScrollView
+// di RunView, quindi qui niente NavigationStack né scroll proprio.
 
 struct JumpRopeView: View {
     @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
 
     @Query(sort: \JumpRopeSession.date, order: .reverse) private var allSessions: [JumpRopeSession]
     @Query(sort: \DayLog.dateKey, order: .reverse) private var allLogs: [DayLog]
@@ -52,92 +54,77 @@ struct JumpRopeView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack { Color.bg.ignoresSafeArea() }
-            .overlay(
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 14) {
-                        // Preset
-                        HTCard {
-                            VStack(alignment: .leading, spacing: 10) {
-                                SectionLabel(text: "Preset")
-                                HStack(spacing: 8) {
-                                    ForEach(RopePreset.all, id: \.name) { preset in
-                                        presetChip(preset)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Configurazione
-                        HTCard {
-                            VStack(alignment: .leading, spacing: 10) {
-                                SectionLabel(text: "Round")
-                                ropeStepper(label: "Ripetizioni", value: $rounds, range: 1...20, step: 1) { "\($0) ×" }
-                                ropeStepper(label: "Lavoro", value: $work, range: 10...600, step: 10) { secString($0) }
-                                ropeStepper(label: "Pausa", value: $rest, range: 0...300, step: 10) { secString($0) }
-
-                                Rectangle().fill(Color.brd).frame(height: 0.5).padding(.vertical, 2)
-
-                                HStack {
-                                    Text("Durata totale")
-                                        .font(.system(size: 13, weight: .medium)).foregroundColor(.muted)
-                                    Spacer()
-                                    Text(durationString(Double(totalDuration)))
-                                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                                        .foregroundColor(ropeAccent)
-                                }
-                                Toggle(isOn: $notifyRounds) {
-                                    Text("Notifiche al cambio round")
-                                        .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
-                                }
-                                .tint(ropeAccent)
-                                Text("Lo schermo resta acceso durante la sessione. Con il telefono bloccato, i round arrivano come notifica (anche sull'Apple Watch).")
-                                    .font(.system(size: 11)).foregroundColor(.muted)
-                            }
-                        }
-
-                        // Avvio
-                        Button { startSession() } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "figure.jumprope")
-                                    .font(.system(size: 20, weight: .bold))
-                                Text("Inizia sessione")
-                                    .font(.system(size: 17, weight: .bold))
-                            }
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity).padding(.vertical, 16)
-                            .background(ropeGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-
-                        // Record
-                        if !allSessions.isEmpty {
-                            recordCard
-                        }
-
-                        // Storico
-                        if !allSessions.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                SectionLabel(text: "Storico sessioni")
-                                ForEach(allSessions.prefix(15)) { session in
-                                    RopeSessionRow(session: session) { deleteSession(session) }
-                                }
-                            }
+        VStack(spacing: 14) {
+            // Preset
+            HTCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionLabel(text: "Preset")
+                    HStack(spacing: 8) {
+                        ForEach(RopePreset.all, id: \.name) { preset in
+                            presetChip(preset)
                         }
                     }
-                    .padding(20).padding(.bottom, 30)
                 }
-            )
-            .navigationTitle("Salto con la corda")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Chiudi") { dismiss() }.foregroundColor(.muted)
+            }
+
+            // Configurazione
+            HTCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionLabel(text: "Round")
+                    ropeStepper(label: "Ripetizioni", value: $rounds, range: 1...20, step: 1) { "\($0) ×" }
+                    ropeStepper(label: "Lavoro", value: $work, range: 10...600, step: 10) { secString($0) }
+                    ropeStepper(label: "Pausa", value: $rest, range: 0...300, step: 10) { secString($0) }
+
+                    Rectangle().fill(Color.brd).frame(height: 0.5).padding(.vertical, 2)
+
+                    HStack {
+                        Text("Durata totale")
+                            .font(.system(size: 13, weight: .medium)).foregroundColor(.muted)
+                        Spacer()
+                        Text(durationString(Double(totalDuration)))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundColor(ropeAccent)
+                    }
+                    Toggle(isOn: $notifyRounds) {
+                        Text("Notifiche al cambio round")
+                            .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
+                    }
+                    .tint(ropeAccent)
+                    Text("Lo schermo resta acceso durante la sessione. Con il telefono bloccato, i round arrivano come notifica (anche sull'Apple Watch).")
+                        .font(.system(size: 11)).foregroundColor(.muted)
+                }
+            }
+
+            // Avvio
+            Button { startSession() } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "figure.jumprope")
+                        .font(.system(size: 20, weight: .bold))
+                    Text("Inizia sessione")
+                        .font(.system(size: 17, weight: .bold))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity).padding(.vertical, 16)
+                .background(ropeGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            // Record
+            if !allSessions.isEmpty {
+                recordCard
+            }
+
+            // Storico
+            if !allSessions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(text: "Storico sessioni")
+                        .padding(.top, 6)
+                    ForEach(allSessions.prefix(15)) { session in
+                        RopeSessionRow(session: session) { deleteSession(session) }
+                    }
                 }
             }
         }
-        .presentationBackground(Color.bg)
         .fullScreenCover(item: $timer) { t in
             ActiveJumpRopeView(timer: t) { save, jumps in
                 endSession(save: save, jumps: jumps)

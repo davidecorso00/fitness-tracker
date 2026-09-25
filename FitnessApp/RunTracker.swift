@@ -30,6 +30,25 @@ struct RunPhase {
     }
 }
 
+// MARK: - Tipo di attività
+
+/// Corsa e passeggiata usano lo stesso tracker GPS: cambiano la stima delle
+/// calorie, il filtro sui salti del GPS e come vengono salvate.
+enum CardioKind {
+    case run, walk
+
+    /// kcal per kg di peso per km percorso. Corsa ≈ 1 kcal/kg/km; camminando su
+    /// terreno piano il costo netto è circa la metà (formule ACSM: 0,1 ml O₂/kg
+    /// per metro contro 0,2 della corsa).
+    var kcalPerKgKm: Double { self == .walk ? 0.5 : 1.036 }
+
+    /// Velocità oltre la quale un punto GPS è un salto, non movimento reale (m/s).
+    var maxPlausibleSpeed: Double { self == .walk ? 4.5 : 12.5 }   // ~16 km/h · ~2'40"/km
+
+    var sportType: SportType { self == .walk ? .walking : .running }
+    var healthActivity: HKWorkoutActivityType { self == .walk ? .walking : .running }
+}
+
 // MARK: - Run Tracker
 //
 // Traccia una corsa via GPS. Il cronometro è basato su date reali (non su un
@@ -56,6 +75,7 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
     @Published var currentPhaseIndex: Int = 0
 
     let startDate = Date()
+    let kind: CardioKind
     let phases: [RunPhase]                // vuoto = corsa libera
     private let weightKg: Double
     private let notifyEveryKm: Bool
@@ -76,7 +96,7 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
 
     // Filtri GPS
     private let maxHorizontalAccuracy: Double = 35   // metri
-    private let maxPlausibleSpeed: Double = 12.5     // m/s (~2'40"/km, oltre è un glitch)
+    private var maxPlausibleSpeed: Double { kind.maxPlausibleSpeed }
 
     var avgPaceSecPerKm: Double? {
         guard distanceMeters > 50, elapsed > 0 else { return nil }
@@ -97,8 +117,9 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         return max(phases[currentPhaseIndex].duration - (elapsed - phaseStart), 0)
     }
 
-    init(weightKg: Double, phases: [RunPhase] = [],
+    init(kind: CardioKind = .run, weightKg: Double, phases: [RunPhase] = [],
          notifyEveryKm: Bool = false, notifyEveryMinutes: Int = 0) {
+        self.kind = kind
         self.weightKg = weightKg > 0 ? weightKg : 70
         self.phases = phases
         self.notifyEveryKm = notifyEveryKm
@@ -288,7 +309,7 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
                 // Scarta salti GPS implausibili
                 guard dt > 0, delta / dt <= maxPlausibleSpeed else { continue }
                 distanceMeters += delta
-                kcal += 1.036 * weightKg * (delta / 1000)
+                kcal += kind.kcalPerKgKm * weightKg * (delta / 1000)
                 checkSplit()
             }
             lastLocation = loc
@@ -346,7 +367,8 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
     private func startLiveActivity() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let content = ActivityContent(state: activityState, staleDate: nil)
-        liveActivity = try? Activity.request(attributes: RunActivityAttributes(), content: content)
+        liveActivity = try? Activity.request(attributes: RunActivityAttributes(isWalk: kind == .walk),
+                                             content: content)
     }
 
     /// Il cronometro si aggiorna da solo via Text(timerInterval:); qui inviamo

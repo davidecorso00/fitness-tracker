@@ -13,7 +13,7 @@ enum HealthWriteSettings {
         static let energy   = "healthWriteEnergy"
     }
 
-    /// Allenamenti (palestra, corsa, corda) visibili in Salute e Fitness.
+    /// Allenamenti (palestra, corsa, passeggiata, corda) visibili in Salute e Fitness.
     static var writeWorkouts: Bool {
         get { UserDefaults.standard.object(forKey: Key.workouts) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: Key.workouts) }

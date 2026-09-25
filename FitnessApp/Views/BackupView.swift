@@ -139,7 +139,8 @@ final class BackupManager {
                     avgHeartRate: $0.avgHeartRate > 0 ? $0.avgHeartRate : nil,
                     maxHeartRate: $0.maxHeartRate > 0 ? $0.maxHeartRate : nil,
                     heartRate: $0.hrPoints.isEmpty ? nil : $0.hrPoints,
-                    stableId: $0.stableId.isEmpty ? nil : $0.stableId)
+                    stableId: $0.stableId.isEmpty ? nil : $0.stableId,
+                    activityKind: $0.activityKind.isEmpty ? nil : $0.activityKind)
             },
             jumpRopeSessions: ropeSessions.map {
                 JumpRopeSessionBackup(date: $0.date, dayKey: $0.dayKey,
@@ -399,6 +400,7 @@ final class BackupManager {
                                  maxHeartRate: r.maxHeartRate ?? 0,
                                  hrSeries: r.heartRate ?? [])
             run.dayKey = r.dayKey
+            run.activityKind = r.activityKind ?? ""
             if let id = r.stableId { run.stableId = id }
             context.insert(run)
         }

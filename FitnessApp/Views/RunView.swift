@@ -9,19 +9,46 @@ private let runAccent = Color.gymCyan
 private let runGradient = LinearGradient(colors: [.gymCyan, .gymBlue],
                                          startPoint: .topLeading, endPoint: .bottomTrailing)
 
+// Accent della passeggiata
+private let walkAccent = Color.gymGreen
+private let walkGradient = LinearGradient(colors: [.gymGreen, .gymCyan],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing)
+
+extension CardioKind {
+    var accent: Color { self == .walk ? walkAccent : runAccent }
+    var gradient: LinearGradient { self == .walk ? walkGradient : runGradient }
+    var icon: String { self == .walk ? "figure.walk" : "figure.run" }
+    /// Nome in minuscolo, per i testi ("Salva corsa", "Salva passeggiata").
+    var noun: String { self == .walk ? "passeggiata" : "corsa" }
+}
+
+extension RunSession {
+    var cardioKind: CardioKind { isWalk ? .walk : .run }
+}
+
+// MARK: - Sezioni
+
+enum CardioSection: String, CaseIterable, Identifiable {
+    case run  = "Corsa"
+    case walk = "Passeggiata"
+    case rope = "Corda"
+    var id: String { rawValue }
+}
+
 // MARK: - Run View (tab root)
 
 struct RunView: View {
     @Environment(\.modelContext) private var context
     @Binding var showSettings: Bool
 
-    @Query(sort: \RunSession.date, order: .reverse) private var allRuns: [RunSession]
+    /// Corse e passeggiate: stesso modello, separate da `isWalk`.
+    @Query(sort: \RunSession.date, order: .reverse) private var allSessions: [RunSession]
     @Query(sort: \DayLog.dateKey, order: .reverse) private var allLogs: [DayLog]
     @Query private var allLimits: [AppLimits]
 
     @State private var tracker: RunTracker?
     @State private var detailRun: RunSession?
-    @State private var showJumpRope = false
+    @AppStorage("cardioSection") private var section: CardioSection = .run
 
     // Impostazioni corsa (persistono tra sessioni)
     @AppStorage("runModeIntervals") private var intervalsMode = false
@@ -31,94 +58,36 @@ struct RunView: View {
     @AppStorage("runNotifyKm") private var notifyKm = true
     @AppStorage("runNotifyMinutes") private var notifyMinutes = 0    // 0 = off
 
+    // Impostazioni passeggiata
+    @AppStorage("walkNotifyKm") private var walkNotifyKm = true
+    @AppStorage("walkNotifyMinutes") private var walkNotifyMinutes = 0
+
     private var lastKnownWeight: Double {
         allLogs.first { $0.weight != nil }?.weight ?? 70
     }
+
+    private var runs: [RunSession] { allSessions.filter { !$0.isWalk } }
+    private var walks: [RunSession] { allSessions.filter { $0.isWalk } }
 
     var body: some View {
         ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    PageHeader("Cardio", subtitle: "Corsa GPS e salto con la corda", showSettings: $showSettings)
+                    PageHeader("Cardio", subtitle: "Corsa, passeggiata e salto con la corda", showSettings: $showSettings)
 
                     VStack(spacing: 14) {
-                        // Avvio corsa
-                        Button { startRun() } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "figure.run")
-                                    .font(.system(size: 22, weight: .bold))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Inizia corsa")
-                                        .font(.system(size: 17, weight: .bold))
-                                    Text("GPS · percorso, passo e calorie in tempo reale")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .opacity(0.8)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .bold))
+                        Picker("Sezione", selection: $section) {
+                            ForEach(CardioSection.allCases) { s in
+                                Text(s.rawValue).tag(s)
                             }
-                            .foregroundColor(.black)
-                            .padding(18)
-                            .background(runGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         }
-                        .buttonStyle(.plain)
+                        .pickerStyle(.segmented)
 
-                        // Zona salto con la corda
-                        Button { showJumpRope = true } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "figure.jumprope")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.gymOrange)
-                                    .frame(width: 42, height: 42)
-                                    .background(Color.gymOrange.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Salto con la corda")
-                                        .font(.system(size: 15, weight: .bold)).foregroundColor(.txt)
-                                    Text("Timer a round · Tabata, boxe e cicli liberi")
-                                        .font(.system(size: 11)).foregroundColor(.muted)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12, weight: .semibold)).foregroundColor(.muted)
-                            }
-                            .padding(14)
-                            .background(Color.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-
-                        // Impostazioni corsa: cicli e notifiche
-                        runSetupCard
-
-                        // Obiettivo settimanale
-                        if let target = allLimits.first?.weeklyRunKmTarget, target > 0 {
-                            WeeklyRunGoalCard(targetKm: target)
-                        }
-
-                        // Storico
-                        if allRuns.isEmpty {
-                            HTCard {
-                                VStack(spacing: 10) {
-                                    Image(systemName: "figure.run")
-                                        .font(.system(size: 32)).foregroundColor(.muted)
-                                    Text("Nessuna corsa registrata.\nPremi \"Inizia corsa\" e parti!")
-                                        .font(.system(size: 13)).foregroundColor(.muted)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .frame(maxWidth: .infinity).padding(.vertical, 20)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 8) {
-                                SectionLabel(text: "Storico corse")
-                                    .padding(.top, 6)
-                                ForEach(allRuns) { run in
-                                    Button { detailRun = run } label: {
-                                        RunRow(run: run)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+                        switch section {
+                        case .run:  runSection
+                        case .walk: walkSection
+                        case .rope: JumpRopeView()
                         }
                     }
                     .padding(.horizontal, 20).padding(.bottom, 100)
@@ -133,8 +102,90 @@ struct RunView: View {
         .sheet(item: $detailRun) { run in
             RunDetailView(run: run, onDelete: { deleteRun(run) })
         }
-        .sheet(isPresented: $showJumpRope) {
-            JumpRopeView()
+    }
+
+    // ── Sezioni ───────────────────────────────────────────────────────────
+
+    @ViewBuilder private var runSection: some View {
+        startButton(kind: .run, title: "Inizia corsa",
+                    subtitle: "GPS · percorso, passo e calorie in tempo reale") { startRun() }
+
+        // Impostazioni corsa: cicli e notifiche
+        runSetupCard
+
+        // Obiettivo settimanale
+        if let target = allLimits.first?.weeklyRunKmTarget, target > 0 {
+            WeeklyRunGoalCard(targetKm: target)
+        }
+
+        history(runs, kind: .run, title: "Storico corse",
+                empty: "Nessuna corsa registrata.\nPremi \"Inizia corsa\" e parti!")
+    }
+
+    @ViewBuilder private var walkSection: some View {
+        startButton(kind: .walk, title: "Inizia passeggiata",
+                    subtitle: "GPS · percorso, distanza e calorie in tempo reale") { startWalk() }
+
+        HTCard {
+            VStack(alignment: .leading, spacing: 12) {
+                notificationSettings(title: "Notifiche durante la passeggiata",
+                                     everyKm: $walkNotifyKm, everyMinutes: $walkNotifyMinutes,
+                                     tint: walkAccent)
+            }
+        }
+
+        history(walks, kind: .walk, title: "Storico passeggiate",
+                empty: "Nessuna passeggiata registrata.\nPremi \"Inizia passeggiata\" e parti!")
+    }
+
+    private func startButton(kind: CardioKind, title: String, subtitle: String,
+                             action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: kind.icon)
+                    .font(.system(size: 22, weight: .bold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .bold))
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .opacity(0.8)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+            }
+            .foregroundColor(.black)
+            .padding(18)
+            .background(kind.gradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func history(_ sessions: [RunSession], kind: CardioKind, title: String, empty: String) -> some View {
+        if sessions.isEmpty {
+            HTCard {
+                VStack(spacing: 10) {
+                    Image(systemName: kind.icon)
+                        .font(.system(size: 32)).foregroundColor(.muted)
+                    Text(empty)
+                        .font(.system(size: 13)).foregroundColor(.muted)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 20)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(text: title)
+                    .padding(.top, 6)
+                ForEach(sessions) { run in
+                    Button { detailRun = run } label: {
+                        RunRow(run: run)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -164,29 +215,37 @@ struct RunView: View {
 
                 Rectangle().fill(Color.brd).frame(height: 0.5)
 
-                SectionLabel(text: "Notifiche durante la corsa")
-                Toggle(isOn: $notifyKm) {
-                    Text("Ogni chilometro")
-                        .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
-                }
-                .tint(runAccent)
-                HStack {
-                    Text("Ogni N minuti")
-                        .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
-                    Spacer()
-                    Picker("", selection: $notifyMinutes) {
-                        Text("Off").tag(0)
-                        Text("1").tag(1)
-                        Text("5").tag(5)
-                        Text("10").tag(10)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 180)
-                }
-                Text("Con il telefono in tasca le notifiche arrivano sull'Apple Watch.")
-                    .font(.system(size: 11)).foregroundColor(.muted)
+                notificationSettings(title: "Notifiche durante la corsa",
+                                     everyKm: $notifyKm, everyMinutes: $notifyMinutes,
+                                     tint: runAccent)
             }
         }
+    }
+
+    @ViewBuilder
+    private func notificationSettings(title: String, everyKm: Binding<Bool>,
+                                      everyMinutes: Binding<Int>, tint: Color) -> some View {
+        SectionLabel(text: title)
+        Toggle(isOn: everyKm) {
+            Text("Ogni chilometro")
+                .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
+        }
+        .tint(tint)
+        HStack {
+            Text("Ogni N minuti")
+                .font(.system(size: 14, weight: .medium)).foregroundColor(.txt)
+            Spacer()
+            Picker("", selection: everyMinutes) {
+                Text("Off").tag(0)
+                Text("1").tag(1)
+                Text("5").tag(5)
+                Text("10").tag(10)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+        }
+        Text("Con il telefono in tasca le notifiche arrivano sull'Apple Watch.")
+            .font(.system(size: 11)).foregroundColor(.muted)
     }
 
     private func setupStepper(label: String, value: Binding<Int>, range: ClosedRange<Int>, unit: String) -> some View {
@@ -219,12 +278,22 @@ struct RunView: View {
         .buttonStyle(.plain)
     }
 
+    // ── Avvio e salvataggio ───────────────────────────────────────────────
+
     private func startRun() {
         let phases = intervalsMode
             ? RunPhase.plan(rounds: intervalRounds, workMinutes: intervalWork, restMinutes: intervalRest)
             : []
-        let t = RunTracker(weightKg: lastKnownWeight, phases: phases,
-                           notifyEveryKm: notifyKm, notifyEveryMinutes: notifyMinutes)
+        begin(RunTracker(kind: .run, weightKg: lastKnownWeight, phases: phases,
+                         notifyEveryKm: notifyKm, notifyEveryMinutes: notifyMinutes))
+    }
+
+    private func startWalk() {
+        begin(RunTracker(kind: .walk, weightKg: lastKnownWeight,
+                         notifyEveryKm: walkNotifyKm, notifyEveryMinutes: walkNotifyMinutes))
+    }
+
+    private func begin(_ t: RunTracker) {
         t.start()
         tracker = t
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -247,18 +316,19 @@ struct RunView: View {
                                  route: t.route,
                                  avgHeartRate: hr.avg,
                                  maxHeartRate: hr.max,
-                                 hrSeries: hr.series)
+                                 hrSeries: hr.series,
+                                 isWalk: t.kind == .walk)
             context.insert(run)
-            // La corsa entra nel sistema attività esistente: le kcal contano nei totali
+            // La sessione entra nel sistema attività esistente: le kcal contano nei totali
             // giornalieri come ogni altro sport. `autoTracked` evita che vengano sommate
             // due volte quando Apple Health ha già registrato l'energia attiva.
-            context.insert(SportEntry(dayKey: run.dayKey, sportName: SportType.running.rawValue,
+            context.insert(SportEntry(dayKey: run.dayKey, sportName: t.kind.sportType.rawValue,
                                       durationMinutes: max(1, Int(t.elapsed / 60)),
                                       kcalBurned: t.kcal.rounded(),
                                       autoTracked: true, sourceId: run.stableId))
             try? context.save()
 
-            HealthExport.send(activity: .running,
+            HealthExport.send(activity: t.kind.healthActivity,
                               start: run.date, durationSeconds: run.durationSeconds,
                               kcal: run.kcalBurned, distanceMeters: run.distanceMeters)
 
@@ -271,7 +341,7 @@ struct RunView: View {
 
     private func deleteRun(_ run: RunSession) {
         deleteTwinSportEntry(sourceId: run.stableId, dayKey: run.dayKey,
-                             sportName: SportType.running.rawValue,
+                             sportName: run.cardioKind.sportType.rawValue,
                              kcal: run.kcalBurned, context: context)
         context.delete(run)
         try? context.save()
@@ -284,14 +354,15 @@ struct RunView: View {
 struct WeeklyRunGoalCard: View {
     let targetKm: Double
 
-    /// Solo le corse della settimana corrente: la card è sempre a schermo nel Sommario,
-    /// non ha senso farle caricare tutto lo storico a ogni refresh.
+    /// Solo le corse della settimana corrente (niente passeggiate): la card è sempre
+    /// a schermo nel Sommario, non ha senso farle caricare tutto lo storico a ogni refresh.
     @Query private var weekRuns: [RunSession]
 
     init(targetKm: Double) {
         self.targetKm = targetKm
         let start = currentWeekInterval()?.start ?? Calendar.current.startOfDay(for: Date())
-        _weekRuns = Query(filter: #Predicate<RunSession> { $0.date >= start })
+        let walk = RunSession.walkKind
+        _weekRuns = Query(filter: #Predicate<RunSession> { $0.date >= start && $0.activityKind != walk })
     }
 
     private var weekKm: Double {
@@ -335,11 +406,12 @@ private struct RunRow: View {
     }()
 
     var body: some View {
+        let accent = run.cardioKind.accent
         HStack(spacing: 12) {
-            Image(systemName: "figure.run")
-                .font(.system(size: 16, weight: .semibold)).foregroundColor(runAccent)
+            Image(systemName: run.cardioKind.icon)
+                .font(.system(size: 16, weight: .semibold)).foregroundColor(accent)
                 .frame(width: 38, height: 38)
-                .background(runAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(Self.dateFmt.string(from: run.date).capitalized)
                     .font(.system(size: 12, weight: .medium)).foregroundColor(.muted)
@@ -347,7 +419,7 @@ private struct RunRow: View {
                     Text(String(format: "%.2f km", run.distanceKm))
                         .font(.system(size: 16, weight: .bold, design: .rounded)).foregroundColor(.txt)
                     Text(paceString(run.avgPaceSecPerKm) + " /km")
-                        .font(.system(size: 12, weight: .semibold)).foregroundColor(runAccent)
+                        .font(.system(size: 12, weight: .semibold)).foregroundColor(accent)
                     Text(durationString(run.durationSeconds))
                         .font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundColor(.muted)
                 }
@@ -363,7 +435,7 @@ private struct RunRow: View {
 
 // MARK: - SportEntry gemella
 
-/// Cancella la `SportEntry` creata insieme a una sessione di corsa o corda.
+/// Cancella la `SportEntry` creata insieme a una sessione di corsa, passeggiata o corda.
 /// Le sessioni nuove hanno `sourceId`; per quelle salvate prima di questo campo si
 /// ricade sull'abbinamento per giorno, nome e kcal, com'era prima.
 @MainActor
@@ -432,6 +504,8 @@ struct ActiveRunView: View {
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var showEndDialog = false
 
+    private var accent: Color { tracker.kind.accent }
+
     var body: some View {
         VStack(spacing: 0) {
             // ── Mappa live ────────────────────────────────────────────────
@@ -440,7 +514,7 @@ struct ActiveRunView: View {
                     UserAnnotation()
                     ForEach(Array(routeSegments(tracker.route).enumerated()), id: \.offset) { _, coords in
                         MapPolyline(coordinates: coords)
-                            .stroke(runAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                            .stroke(accent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                     }
                 }
                 .mapStyle(.standard(elevation: .flat))
@@ -485,7 +559,7 @@ struct ActiveRunView: View {
                 Text(String(format: "%.2f", tracker.distanceMeters / 1000))
                     .font(.system(size: 40, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundColor(runAccent)
+                    .foregroundColor(accent)
                 Text("km")
                     .font(.system(size: 18, weight: .semibold)).foregroundColor(.muted)
             }
@@ -493,7 +567,7 @@ struct ActiveRunView: View {
 
             HStack(spacing: 8) {
                 liveStat(value: paceString(tracker.currentPaceSecPerKm), label: "Passo", color: .ringGreen)
-                liveStat(value: paceString(tracker.avgPaceSecPerKm), label: "Medio", color: runAccent)
+                liveStat(value: paceString(tracker.avgPaceSecPerKm), label: "Medio", color: accent)
                 liveStat(value: tracker.currentBPM.map { "\(Int($0))" } ?? "—", label: "Bpm", color: .gymPink)
                 liveStat(value: "\(Int(tracker.kcal))", label: "Kcal", color: .ringRed)
             }
@@ -519,10 +593,10 @@ struct ActiveRunView: View {
             .padding(.horizontal, 20).padding(.bottom, 30)
         }
         .background(Color.bg.ignoresSafeArea())
-        .confirmationDialog("Terminare la corsa?", isPresented: $showEndDialog, titleVisibility: .visible) {
-            Button("Salva corsa") { onEnd(true) }
-            Button("Scarta corsa", role: .destructive) { onEnd(false) }
-            Button("Continua a correre", role: .cancel) {}
+        .confirmationDialog("Terminare la \(tracker.kind.noun)?", isPresented: $showEndDialog, titleVisibility: .visible) {
+            Button("Salva \(tracker.kind.noun)") { onEnd(true) }
+            Button("Scarta \(tracker.kind.noun)", role: .destructive) { onEnd(false) }
+            Button(tracker.kind == .walk ? "Continua a camminare" : "Continua a correre", role: .cancel) {}
         }
     }
 
@@ -612,6 +686,8 @@ struct RunDetailView: View {
         f.dateFormat = "EEEE d MMMM yyyy · HH:mm"; return f
     }()
 
+    private var accent: Color { run.cardioKind.accent }
+
     var body: some View {
         let points = run.routePoints
         NavigationStack {
@@ -624,7 +700,7 @@ struct RunDetailView: View {
                             Map(initialPosition: .region(region)) {
                                 ForEach(Array(routeSegments(points).enumerated()), id: \.offset) { _, coords in
                                     MapPolyline(coordinates: coords)
-                                        .stroke(runAccent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                                        .stroke(accent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                                 }
                                 if let start = points.first {
                                     Marker("Partenza", systemImage: "flag.fill",
@@ -651,7 +727,7 @@ struct RunDetailView: View {
                             VStack(spacing: 14) {
                                 HStack(spacing: 10) {
                                     detailStat(value: String(format: "%.2f", run.distanceKm), unit: "km",
-                                               label: "Distanza", color: runAccent)
+                                               label: "Distanza", color: accent)
                                     detailStat(value: durationString(run.durationSeconds), unit: "",
                                                label: "Durata", color: .txt)
                                 }
@@ -690,7 +766,7 @@ struct RunDetailView: View {
                                                 ZStack(alignment: .leading) {
                                                     Capsule().fill(Color.white.opacity(0.07)).frame(height: 14)
                                                     Capsule()
-                                                        .fill(split == fastest ? Color.gymGreen : runAccent.opacity(0.75))
+                                                        .fill(split == fastest ? Color.gymGreen : accent.opacity(0.75))
                                                         .frame(width: geo.size.width * (split > 0 ? fastest / split : 0), height: 14)
                                                 }
                                             }
@@ -709,7 +785,7 @@ struct RunDetailView: View {
                     .padding(20).padding(.bottom, 30)
                 }
             )
-            .navigationTitle("Dettaglio corsa").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(run.isWalk ? "Dettaglio passeggiata" : "Dettaglio corsa").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Chiudi") { dismiss() }.foregroundColor(.muted)
@@ -720,7 +796,7 @@ struct RunDetailView: View {
                     }
                 }
             }
-            .confirmationDialog("Eliminare questa corsa?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            .confirmationDialog("Eliminare questa \(run.cardioKind.noun)?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
                 Button("Elimina", role: .destructive) { onDelete() }
                 Button("Annulla", role: .cancel) {}
             }

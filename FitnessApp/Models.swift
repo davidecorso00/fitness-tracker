@@ -161,6 +161,7 @@ enum GymColor: String, Codable, CaseIterable {
 
 enum SportType: String, CaseIterable, Identifiable {
     case running        = "Corsa"
+    case walking        = "Passeggiata"
     case briskWalking   = "Camminata veloce"
     case cycling        = "Ciclismo"
     case swimming       = "Nuoto"
@@ -186,6 +187,7 @@ enum SportType: String, CaseIterable, Identifiable {
     var kcalPerHour: Double {
         switch self {
         case .running:       return 600
+        case .walking:       return 230
         case .briskWalking:  return 300
         case .cycling:       return 500
         case .swimming:      return 550
@@ -211,6 +213,7 @@ enum SportType: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .running:       return "figure.run"
+        case .walking:       return "figure.walk"
         case .briskWalking:  return "figure.walk"
         case .cycling:       return "figure.outdoor.cycle"
         case .swimming:      return "figure.pool.swim"
@@ -666,13 +669,20 @@ struct HRPoint: Codable {
     var splitSeconds: [Double] = []      // secondi impiegati per ogni km completato
     var avgHeartRate: Double = 0         // 0 = nessun dato (niente Watch al polso)
     var maxHeartRate: Double = 0
+    /// "" = corsa (anche tutte le sessioni salvate prima di questo campo),
+    /// `RunSession.walkKind` = passeggiata.
+    var activityKind: String = ""
     @Attribute(.externalStorage) var routeData: Data = Data()
     @Attribute(.externalStorage) var heartRateData: Data = Data()
 
+    static let walkKind = "walk"
+
     init(date: Date = Date(), distanceMeters: Double = 0, durationSeconds: Double = 0,
          kcalBurned: Double = 0, splitSeconds: [Double] = [], route: [RoutePoint] = [],
-         avgHeartRate: Double = 0, maxHeartRate: Double = 0, hrSeries: [HRPoint] = []) {
+         avgHeartRate: Double = 0, maxHeartRate: Double = 0, hrSeries: [HRPoint] = [],
+         isWalk: Bool = false) {
         self.stableId = UUID().uuidString
+        self.activityKind = isWalk ? RunSession.walkKind : ""
         self.date = date
         self.dayKey = date.dateKey
         self.distanceMeters = distanceMeters
@@ -686,6 +696,8 @@ struct HRPoint: Codable {
     }
 
     var distanceKm: Double { distanceMeters / 1000 }
+
+    var isWalk: Bool { activityKind == RunSession.walkKind }
 
     /// Passo medio in secondi al km (nil se distanza trascurabile)
     var avgPaceSecPerKm: Double? {

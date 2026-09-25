@@ -81,7 +81,12 @@ let runs = [RunSessionBackup(date: now, dayKey: "2026-08-16",
                              splitSeconds: [303, 298, 305],
                              route: [RoutePoint(lat: 46.01, lon: 8.95, t: 0, seg: 0)],
                              avgHeartRate: 152, maxHeartRate: 178,
-                             heartRate: [HRPoint(t: 0, bpm: 120)], stableId: "run-uuid-1")]
+                             heartRate: [HRPoint(t: 0, bpm: 120)], stableId: "run-uuid-1"),
+            RunSessionBackup(date: now, dayKey: "2026-08-16",
+                             distanceMeters: 3100, durationSeconds: 2400, kcalBurned: 110,
+                             splitSeconds: [770, 772, 768],
+                             route: [RoutePoint(lat: 46.01, lon: 8.95, t: 0, seg: 0)],
+                             stableId: "walk-uuid-1", activityKind: "walk")]
 
 let ropes = [JumpRopeSessionBackup(date: now, dayKey: "2026-08-16",
                                    rounds: 6, plannedRounds: 6, workSeconds: 60,
@@ -124,10 +129,12 @@ check("serie nella scheda", back.workoutTemplates?.first?.templateExercises?.fir
 check("sessioni palestra", back.workoutSessions?.count == 1)
 check("esercizi nella sessione", back.workoutSessions?.first?.entries.count == 1)
 check("serie nella sessione", back.workoutSessions?.first?.entries.first?.sets.first?.reps == 8)
-check("corse", back.runSessions?.count == 1)
+check("corse e passeggiate", back.runSessions?.count == 2)
 check("percorso GPS", back.runSessions?.first?.route.count == 1)
 check("battito corsa", back.runSessions?.first?.heartRate?.count == 1)
 check("stableId corsa", back.runSessions?.first?.stableId == "run-uuid-1")
+check("corsa senza tipo → nil", back.runSessions?.first?.activityKind == nil)
+check("tipo passeggiata", back.runSessions?.last?.activityKind == "walk")
 check("sessioni corda", back.jumpRopeSessions?.first?.jumps == 720)
 check("acqua", back.waterEntries?.first?.liters == 0.5)
 check("farmaci", back.medicines?.first?.name == "Vitamina D")
