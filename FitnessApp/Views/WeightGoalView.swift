@@ -159,7 +159,7 @@ struct WeightGoalSection: View {
         let today = Calendar.current.startOfDay(for: Date())
         var maxDays = 90
         if let td = targetDate {
-            maxDays = max(Calendar.current.dateComponents([.day], from: today, to: td).day ?? 90 + 30, 90)
+            maxDays = max((Calendar.current.dateComponents([.day], from: today, to: td).day ?? 90) + 30, 90)
         } else if let est = estimatedDays {
             maxDays = min(est + 30, 365)
         }
@@ -167,7 +167,7 @@ struct WeightGoalSection: View {
         var w = cw
         for i in 0...maxDays {
             pts.append((today.adding(days: i), w))
-            w += dailyKgChange
+            w -= dailyKgChange   // dailyKgChange > 0 = deficit = il peso scende
         }
         return pts
     }
@@ -353,7 +353,9 @@ struct WeightGoalSection: View {
                 icon: "arrow.up.right.circle.fill",
                 color: .gymOrange,
                 title: "Ritmo contrario all'obiettivo",
-                body: "Negli ultimi 30 giorni sei in surplus calorico. Riduci le calorie per tornare in deficit."
+                body: dailyKgChange < 0
+                    ? "Negli ultimi 30 giorni sei in surplus calorico. Riduci le calorie per tornare in deficit."
+                    : "Negli ultimi 30 giorni sei in deficit calorico. Aumenta le calorie per prendere peso."
             )
         } else if let cw = currentWeight, abs(cw - targetWeight) < 0.5 {
             EmptyView()
