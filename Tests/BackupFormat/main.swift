@@ -198,7 +198,7 @@ print("  campi esportati: \(campiBackup.joined(separator: ", "))")
 print("\n4. Riepilogo dopo export/import")
 let summary = full.summaryText
 print("  → \(summary)")
-for atteso in ["piatto", "allenamento", "corsa", "farmaco", "scheda", "acqua", "sessione corda"] {
+for atteso in ["piatto", "allenamento", "corsa", "passeggiata", "farmaco", "scheda", "acqua", "sessione corda"] {
     check("il riepilogo cita '\(atteso)'", summary.contains(atteso))
 }
 

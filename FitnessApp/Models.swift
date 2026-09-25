@@ -322,7 +322,8 @@ func calculateBMR(weightKg: Double, heightCm: Double, ageYears: Int, sex: Sex) -
 /// Kcal degli sport di un giorno, tenendo separate le attività tracciate dall'app.
 struct SportKcal {
     var manual: Double = 0   // inserite a mano dall'utente
-    var auto: Double = 0     // corsa GPS e salto con la corda
+    var auto: Double = 0     // corsa GPS, passeggiata GPS e salto con la corda
+    var autoWalk: Double = 0 // la parte di `auto` dovuta alle passeggiate GPS
 
     var total: Double { manual + auto }
 }
@@ -331,17 +332,31 @@ extension Sequence<SportEntry> {
     /// Somma le kcal per giorno separando manuali e tracciate in-app.
     func sportKcalByDay() -> [String: SportKcal] {
         reduce(into: [String: SportKcal]()) { acc, s in
-            if s.autoTracked { acc[s.dayKey, default: SportKcal()].auto    += s.kcalBurned }
-            else             { acc[s.dayKey, default: SportKcal()].manual  += s.kcalBurned }
+            if s.autoTracked {
+                acc[s.dayKey, default: SportKcal()].auto += s.kcalBurned
+                if s.isAutoWalk { acc[s.dayKey, default: SportKcal()].autoWalk += s.kcalBurned }
+            } else {
+                acc[s.dayKey, default: SportKcal()].manual += s.kcalBurned
+            }
         }
     }
 
     /// Riepilogo di un singolo giorno (la sequenza deve contenere solo quel giorno).
     func sportKcalTotals() -> SportKcal {
         reduce(into: SportKcal()) { acc, s in
-            if s.autoTracked { acc.auto += s.kcalBurned } else { acc.manual += s.kcalBurned }
+            if s.autoTracked {
+                acc.auto += s.kcalBurned
+                if s.isAutoWalk { acc.autoWalk += s.kcalBurned }
+            } else {
+                acc.manual += s.kcalBurned
+            }
         }
     }
+}
+
+private extension SportEntry {
+    /// Voce creata da una passeggiata GPS (non una "Passeggiata" inserita a mano).
+    var isAutoWalk: Bool { autoTracked && sportName == SportType.walking.rawValue }
 }
 
 /// Calorie da movimento del giorno.
@@ -352,10 +367,14 @@ extension Sequence<SportEntry> {
 /// Health ci sono, vengono escluse. Restano invece valide se l'energia attiva non è
 /// disponibile (niente Watch, permessi negati), perché in quel caso sono la stima migliore
 /// che abbiamo di quell'attività.
+///
+/// Eccezione: senza energia attiva la base è la stima dai passi, che comprende già i passi
+/// fatti durante una passeggiata. Le passeggiate GPS si aggiungono solo se i passi mancano.
 func activityKcal(log: DayLog?, sport: SportKcal) -> Double {
     let base = Double(log?.burnedKcal ?? 0)
-    let healthCoversWorkouts = (log?.activeCaloriesBurned ?? 0) > 0
-    return base + (healthCoversWorkouts ? sport.manual : sport.total)
+    if (log?.activeCaloriesBurned ?? 0) > 0 { return base + sport.manual }
+    let walkInSteps = (log?.steps ?? 0) > 0 ? sport.autoWalk : 0
+    return base + sport.total - walkInSteps
 }
 
 func activityKcal(log: DayLog?, sports: [SportEntry]) -> Double {

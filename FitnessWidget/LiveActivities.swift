@@ -16,7 +16,7 @@ struct RunActivityAttributes: ActivityAttributes {
         var bpm: Double?
         var phaseName: String?
     }
-    var isWalk: Bool = false
+    var isWalk: Bool? = nil
 }
 
 struct RestActivityAttributes: ActivityAttributes {
@@ -52,9 +52,10 @@ private func activityDurationString(_ seconds: Double) -> String {
 // MARK: - Corsa o passeggiata
 
 private extension RunActivityAttributes {
-    var icon: String { isWalk ? "figure.walk" : "figure.run" }
-    var title: String { isWalk ? "Passeggiata" : "Corsa" }
-    var accent: Color { isWalk ? walkGreen : runCyan }
+    var walk: Bool { isWalk == true }
+    var icon: String { walk ? "figure.walk" : "figure.run" }
+    var title: String { walk ? "Passeggiata" : "Corsa" }
+    var accent: Color { walk ? walkGreen : runCyan }
 }
 
 // MARK: - Run chrono (system-driven, niente update ogni secondo)

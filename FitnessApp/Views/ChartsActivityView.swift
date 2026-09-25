@@ -196,7 +196,7 @@ struct ChartsActivityView: View {
         var runDays = Set<String>(), sportDays = Set<String>()
         for e in allEntries { foodDays.insert(e.dayKey) }
         for s in allWorkoutSessions { gymDays.insert(s.dayKey) }
-        for r in allRunSessions { runDays.insert(r.dayKey) }
+        for r in allRunSessions where !r.isWalk { runDays.insert(r.dayKey) }
         for s in allSports { sportDays.insert(s.dayKey) }
 
         var ld = [String: DayLog]()

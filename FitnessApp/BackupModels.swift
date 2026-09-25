@@ -194,7 +194,9 @@ extension BackupData {
         add(workoutTemplates?.count ?? 0, "scheda", "schede")
         add(exercises?.count ?? 0, "esercizio", "esercizi")
         add(workoutSessions?.count ?? 0, "allenamento", "allenamenti")
-        add(runSessions?.count ?? 0, "corsa", "corse")
+        let walks = runSessions?.filter { $0.activityKind == "walk" }.count ?? 0
+        add((runSessions?.count ?? 0) - walks, "corsa", "corse")
+        add(walks, "passeggiata", "passeggiate")
         add(jumpRopeSessions?.count ?? 0, "sessione corda", "sessioni corda")
         add(sports?.count ?? 0, "attività", "attività")
         add(waterEntries?.count ?? 0, "bicchiere d'acqua", "registrazioni acqua")

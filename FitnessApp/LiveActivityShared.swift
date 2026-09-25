@@ -21,7 +21,9 @@ struct RunActivityAttributes: ActivityAttributes {
         var bpm: Double?
         var phaseName: String?   // fase corrente nei cicli (es. "Lavoro 2/4")
     }
-    var isWalk: Bool = false     // passeggiata: cambia icona e titolo
+    /// Passeggiata: cambia icona e titolo. Opzionale perché le activity avviate dalla
+    /// versione precedente sono codificate senza questo campo.
+    var isWalk: Bool? = nil
 }
 
 // MARK: - Riposo palestra

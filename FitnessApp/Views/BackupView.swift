@@ -447,7 +447,7 @@ struct BackupView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("""
                          Salva tutto in un file JSON: alimenti, diario, piatti, peso, acqua, \
-                         farmacia, schede, allenamenti, corse, sessioni con la corda e \
+                         farmacia, schede, allenamenti, corse, passeggiate, sessioni con la corda e \
                          impostazioni. Tienilo al sicuro prima di aggiornamenti importanti.
                          """)
                         .font(.system(size: 13)).foregroundColor(.muted)
