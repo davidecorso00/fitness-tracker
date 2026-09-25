@@ -690,19 +690,12 @@ struct AddCustomMealToDiarySheet: View {
     }
 
     private func addEntry() {
-        let totalGrams = eatenGrams
-        let tempFood = FoodItem(
-            name: meal.name,
-            kcalPer100g: parse(kcalStr) / max(totalGrams, 1) * 100,
-            proteinPer100g: parse(proteinStr) / max(totalGrams, 1) * 100,
-            carbsPer100g: parse(carbsStr) / max(totalGrams, 1) * 100,
-            fatPer100g: parse(fatStr) / max(totalGrams, 1) * 100
-        )
-        let entry = FoodEntry(food: tempFood, grams: totalGrams, meal: mealType, date: date)
-        entry.kcalSnapshot = parse(kcalStr)
-        entry.proteinSnapshot = parse(proteinStr)
-        entry.carbsSnapshot = parse(carbsStr)
-        entry.fatSnapshot = parse(fatStr)
+        let f = fraction
+        let entry = FoodEntry(foodName: meal.name, grams: eatenGrams, meal: mealType, date: date,
+                              kcal: parse(kcalStr), protein: parse(proteinStr),
+                              carbs: parse(carbsStr), fat: parse(fatStr),
+                              fiber: meal.totalFiber * f, sugar: meal.totalSugar * f,
+                              saturatedFat: meal.totalSaturatedFat * f, salt: meal.totalSalt * f)
         context.insert(entry)
         try? context.save()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
