@@ -113,9 +113,11 @@ struct ChartsBodyView: View {
     // ── Bilancio calorico ─────────────────────────────────────────────────
 
     @ViewBuilder private var calorieBalanceChart: some View {
+        let today = Calendar.current.startOfDay(for: Date())
         let daily: [(date: Date, net: Double)] = dates.compactMap { d in
+            // Oggi escluso: il basale conta già tutta la giornata, i pasti non ancora.
             let eaten = kcalByDay[d.dateKey] ?? 0
-            guard eaten > 0, let burn = dailyBurn(for: d) else { return nil }
+            guard d < today, eaten > 0, let burn = dailyBurn(for: d) else { return nil }
             return (d, eaten - burn)
         }
         if daily.isEmpty {
@@ -219,9 +221,10 @@ struct ChartsBodyView: View {
         guard hasSomeData else { return [] }
         var cumulative = 0.0
         var result: [(Date, Double)] = []
-        for date in dates {
-            // Solo i giorni con il cibo registrato, come nel bilancio calorico e nei
-            // Risultati: un giorno senza pasti conterebbe tutto il consumo come deficit.
+        let today = Calendar.current.startOfDay(for: Date())
+        for date in dates where date < today {
+            // Solo i giorni conclusi con il cibo registrato, come nel bilancio calorico
+            // e nei Risultati: un giorno senza pasti conterebbe tutto il consumo come deficit.
             let eaten = kcalByDay[date.dateKey] ?? 0
             guard eaten > 0, let burn = dailyBurn(for: date) else { continue }
             let deficit = burn - eaten

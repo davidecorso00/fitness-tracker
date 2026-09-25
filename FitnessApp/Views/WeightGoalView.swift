@@ -67,13 +67,10 @@ struct WeightGoalSection: View {
 
     // MARK: - Burn calculation
 
-    private func dailyBurn(log: DayLog, sports: [String: SportKcal]) -> Double? {
-        guard let d = date(from: log.dateKey) else { return nil }
-        return totalDailyBurn(log: log,
-                              sport: sports[log.dateKey] ?? SportKcal(),
-                              profile: profile,
-                              weightKg: log.weight,
-                              on: d)
+    /// Ultimo peso registrato fino a quel giorno; prima della prima pesata, la prima.
+    private func weight(onOrBefore key: String) -> Double? {
+        allLogs.last { $0.dateKey <= key && $0.weight != nil }?.weight
+            ?? allLogs.first { $0.weight != nil }?.weight
     }
 
     // MARK: - Window stats
@@ -82,18 +79,22 @@ struct WeightGoalSection: View {
         let label: String; let avgDeficit: Double; let count: Int
     }
 
+    /// Media sugli ultimi `n` giorni conclusi con il cibo registrato. Oggi è escluso:
+    /// il basale conta già tutta la giornata, i pasti non ancora.
     private func window(_ n: Int, label: String) -> DeficitWindow {
-        let todayKey = Date().dateKey
-        let cutoffKey = Calendar.current.startOfDay(for: Date()).adding(days: -n).dateKey
+        let today = Calendar.current.startOfDay(for: Date())
         let kcal = kcalByDay
-        let qualifying = allLogs.filter {
-            $0.dateKey > cutoffKey && $0.dateKey <= todayKey &&
-            $0.weight != nil && (kcal[$0.dateKey] ?? 0) > 0
-        }
-        guard !qualifying.isEmpty else { return DeficitWindow(label: label, avgDeficit: 0, count: 0) }
         let sports = sportByDay
-        let deficits = qualifying.compactMap { log in
-            dailyBurn(log: log, sports: sports).map { $0 - (kcal[log.dateKey] ?? 0) }
+        let logs = Dictionary(allLogs.map { ($0.dateKey, $0) }, uniquingKeysWith: { f, _ in f })
+        let deficits: [Double] = (1...n).compactMap { back in
+            let day = today.adding(days: -back)
+            let key = day.dateKey
+            guard let eaten = kcal[key], eaten > 0,
+                  let burn = totalDailyBurn(log: logs[key], sport: sports[key] ?? SportKcal(),
+                                            profile: profile, weightKg: weight(onOrBefore: key),
+                                            on: day)
+            else { return nil }
+            return burn - eaten
         }
         guard !deficits.isEmpty else { return DeficitWindow(label: label, avgDeficit: 0, count: 0) }
         let total = deficits.reduce(0, +)

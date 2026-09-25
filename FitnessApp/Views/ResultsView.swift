@@ -55,6 +55,7 @@ struct ResultsView: View {
         var lastWeight: Double? = allLogs.first { $0.weight != nil }?.weight
 
         let profile = allProfiles.first
+        let today = Calendar.current.startOfDay(for: Date())
         var s = Stats()
         var daysWithKcal = 0, daysWithBurn = 0
 
@@ -73,12 +74,17 @@ struct ResultsView: View {
             if steps > 0 { s.daysWithSteps += 1 }
             if gym != .rest { s.gymDays += 1 }
 
+            // Calorie e deficit solo sui giorni conclusi: oggi il basale conta già
+            // tutta la giornata, i pasti non ancora.
+            guard date < today else { continue }
+
             if eaten > 0 { s.totalKcalEaten += eaten; daysWithKcal += 1 }
-            if activity > 0 { s.totalKcalBurned += activity; daysWithBurn += 1 }
 
             // Senza basale (profilo incompleto) il giorno non entra nel deficit:
             // contarlo come 0 lo farebbe sembrare un surplus di ~2000 kcal.
+            // "Bruciate" = basale × 1,2 + movimento, come nella schermata Oggi.
             let resting = restingKcal(profile: profile, weightKg: lastWeight, on: date)
+            if resting > 0 { s.totalKcalBurned += resting + activity; daysWithBurn += 1 }
             if eaten > 0, resting > 0 {
                 let totalBurn = resting + activity
                 let deficit = totalBurn - eaten
