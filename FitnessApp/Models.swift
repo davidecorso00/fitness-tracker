@@ -486,6 +486,9 @@ let appCalendar: Calendar = {
 @Model final class CustomMeal {
     var name: String = ""
     var portions: Double = 1
+    /// Peso del piatto finito inserito dall'utente (es. dopo la cottura), in grammi.
+    /// 0 = non inserito: si usa la somma dei grammi degli ingredienti.
+    var totalWeight: Double = 0
     var createdAt: Date = Date()
     @Relationship(deleteRule: .cascade, inverse: \CustomMealIngredient.meal)
     var ingredients: [CustomMealIngredient] = []
@@ -501,6 +504,11 @@ let appCalendar: Calendar = {
     var totalSaturatedFat: Double { ingredients.reduce(0) { $0 + $1.saturatedFatPer100g * $1.grams / 100 } }
     var totalSalt: Double    { ingredients.reduce(0) { $0 + $1.saltPer100g * $1.grams / 100 } }
 
+    var ingredientsWeight: Double { ingredients.reduce(0) { $0 + $1.grams } }
+    /// Peso su cui si calcolano porzioni e grammi mangiati.
+    var effectiveWeight: Double { totalWeight > 0 ? totalWeight : ingredientsWeight }
+    var gramsPerPortion: Double { effectiveWeight / max(portions, 1) }
+
     var kcalPerPortion: Double    { totalKcal / max(portions, 1) }
     var proteinPerPortion: Double { totalProtein / max(portions, 1) }
     var carbsPerPortion: Double   { totalCarbs / max(portions, 1) }
@@ -509,6 +517,11 @@ let appCalendar: Calendar = {
     var sugarPerPortion: Double   { totalSugar / max(portions, 1) }
     var saturatedFatPerPortion: Double { totalSaturatedFat / max(portions, 1) }
     var saltPerPortion: Double    { totalSalt / max(portions, 1) }
+
+    /// Frazione del piatto intero corrispondente ai grammi mangiati.
+    func fraction(forGrams grams: Double) -> Double {
+        effectiveWeight > 0 ? grams / effectiveWeight : 0
+    }
 }
 
 @Model final class CustomMealIngredient {

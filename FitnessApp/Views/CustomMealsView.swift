@@ -130,6 +130,7 @@ struct CustomMealFormSheet: View {
 
     @State private var name: String
     @State private var portionsStr: String
+    @State private var weightStr: String
     @State private var ingredients: [IngredientDraft]
     @State private var showIngredientPicker = false
     @State private var showSaveError = false
@@ -138,6 +139,7 @@ struct CustomMealFormSheet: View {
         self.meal = meal
         _name = State(initialValue: meal?.name ?? "")
         _portionsStr = State(initialValue: meal.map { $0.portions.smartFormat } ?? "1")
+        _weightStr = State(initialValue: meal.flatMap { $0.totalWeight > 0 ? $0.totalWeight.smartFormat : nil } ?? "")
         _ingredients = State(initialValue: meal?.ingredients.map { ing in
             IngredientDraft(
                 foodName: ing.foodName,
@@ -158,6 +160,10 @@ struct CustomMealFormSheet: View {
     private var totalCarbs: Double   { ingredients.reduce(0) { $0 + $1.carbsPer100g * $1.grams / 100 } }
     private var totalFat: Double     { ingredients.reduce(0) { $0 + $1.fatPer100g * $1.grams / 100 } }
     private var p: Double { max(portions, 0.1) }
+    private var ingredientsWeight: Double { ingredients.reduce(0) { $0 + $1.grams } }
+    /// Peso inserito dall'utente; 0 se il campo è vuoto o non valido.
+    private var enteredWeight: Double { max(Double(weightStr.replacingOccurrences(of: ",", with: ".")) ?? 0, 0) }
+    private var effectiveWeight: Double { enteredWeight > 0 ? enteredWeight : ingredientsWeight }
     private var kcalPerP: Double    { totalKcal / p }
     private var proteinPerP: Double { totalProtein / p }
     private var carbsPerP: Double   { totalCarbs / p }
@@ -197,6 +203,26 @@ struct CustomMealFormSheet: View {
                                     .foregroundColor(.acc2).tint(.acc2)
                                     .multilineTextAlignment(.center)
                                     .frame(width: 72)
+                                    .padding(.vertical, 8).padding(.horizontal, 10)
+                                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+
+                        // Total weight
+                        HTCard {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    SectionLabel(text: "Peso totale (g)")
+                                    Text("Peso del piatto finito, es. dopo la cottura. Se vuoto: somma ingredienti (\(ingredientsWeight.smartFormat) g)")
+                                        .font(.system(size: 11)).foregroundColor(.muted)
+                                }
+                                Spacer()
+                                TextField(ingredientsWeight.smartFormat, text: $weightStr)
+                                    .keyboardType(.decimalPad)
+                                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                                    .foregroundColor(.acc2).tint(.acc2)
+                                    .multilineTextAlignment(.center)
+                                    .frame(width: 88)
                                     .padding(.vertical, 8).padding(.horizontal, 10)
                                     .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                             }
@@ -243,7 +269,8 @@ struct CustomMealFormSheet: View {
                         if !ingredients.isEmpty {
                             HTCard {
                                 VStack(spacing: 8) {
-                                    SectionLabel(text: "Per porzione").frame(maxWidth: .infinity, alignment: .leading)
+                                    SectionLabel(text: "Per porzione · \((effectiveWeight / p).smartFormat) g")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     HStack(spacing: 0) {
                                         macroCell(label: "Kcal",  value: kcalPerP,    color: .ringRed)
                                         macroCell(label: "Prot.", value: proteinPerP, color: .ringGreen)
@@ -323,6 +350,7 @@ struct CustomMealFormSheet: View {
 
         target.name = name
         target.portions = max(Double(portionsStr.replacingOccurrences(of: ",", with: ".")) ?? 1, 0.1)
+        target.totalWeight = enteredWeight
 
         for old in target.ingredients { context.delete(old) }
         target.ingredients = []
@@ -533,7 +561,9 @@ struct AddCustomMealToDiarySheet: View {
     let mealType: MealType
     let date: Date
 
+    @State private var byWeight = false
     @State private var portionsStr = "1"
+    @State private var gramsStr = ""
     @State private var kcalStr = ""
     @State private var proteinStr = ""
     @State private var carbsStr = ""
@@ -541,6 +571,16 @@ struct AddCustomMealToDiarySheet: View {
 
     private func parse(_ s: String) -> Double { Double(s.replacingOccurrences(of: ",", with: ".")) ?? 0 }
     private var chosenPortions: Double { max(parse(portionsStr), 0.01) }
+    /// Senza peso (ingredienti a 0 g) si può scegliere solo per porzioni.
+    private var hasWeight: Bool { meal.effectiveWeight > 0 }
+    /// Grammi mangiati, dalla modalità scelta.
+    private var eatenGrams: Double {
+        byWeight ? max(parse(gramsStr), 0) : chosenPortions * meal.gramsPerPortion
+    }
+    /// Frazione del piatto intero mangiata.
+    private var fraction: Double {
+        hasWeight ? meal.fraction(forGrams: eatenGrams) : chosenPortions / max(meal.portions, 1)
+    }
 
     var body: some View {
         NavigationStack {
@@ -552,16 +592,29 @@ struct AddCustomMealToDiarySheet: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(meal.name)
                                     .font(.system(size: 18, weight: .bold)).foregroundColor(.txt)
-                                Text("\(meal.ingredients.count) ingredienti · 1 porzione = \(meal.kcalPerPortion.smartFormat) kcal")
+                                Text(hasWeight
+                                     ? "\(meal.effectiveWeight.smartFormat) g in \(meal.portions.smartFormat) porz. · 1 porzione = \(meal.gramsPerPortion.smartFormat) g, \(meal.kcalPerPortion.smartFormat) kcal"
+                                     : "\(meal.ingredients.count) ingredienti · 1 porzione = \(meal.kcalPerPortion.smartFormat) kcal")
                                     .font(.system(size: 12)).foregroundColor(.muted)
                             }
                         }
                         .padding(.horizontal, 20)
 
+                        if hasWeight {
+                            Picker("", selection: $byWeight) {
+                                Text("Porzioni").tag(false)
+                                Text("Grammi").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.horizontal, 20)
+                            .onChange(of: byWeight) { _, toWeight in switchMode(toWeight: toWeight) }
+                        }
+
                         VStack(spacing: 8) {
-                            Text("Numero di porzioni")
+                            Text(byWeight ? "Grammi mangiati" : "Numero di porzioni")
                                 .font(.system(size: 13, weight: .semibold)).foregroundColor(.muted)
-                            TextField("1", text: $portionsStr)
+                            TextField(byWeight ? meal.gramsPerPortion.smartFormat : "1",
+                                      text: byWeight ? $gramsStr : $portionsStr)
                                 .keyboardType(.decimalPad)
                                 .font(.system(size: 32, weight: .bold, design: .rounded))
                                 .foregroundColor(.txt).tint(.acc2)
@@ -570,6 +623,13 @@ struct AddCustomMealToDiarySheet: View {
                                 .padding(.vertical, 10).padding(.horizontal, 16)
                                 .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
                                 .onChange(of: portionsStr) { _, _ in updateMacros() }
+                                .onChange(of: gramsStr) { _, _ in updateMacros() }
+                            if hasWeight {
+                                Text(byWeight
+                                     ? "= \((eatenGrams / max(meal.gramsPerPortion, 0.01)).smartFormat) porzioni"
+                                     : "= \(eatenGrams.smartFormat) g")
+                                    .font(.system(size: 12)).foregroundColor(.muted)
+                            }
                         }
 
                         HTCard {
@@ -584,7 +644,7 @@ struct AddCustomMealToDiarySheet: View {
                         }
                         .padding(.horizontal, 20)
 
-                        PillButton(label: "Aggiungi a \(mealType.rawValue)") {
+                        PillButton(label: "Aggiungi a \(mealType.rawValue)", disabled: byWeight && eatenGrams <= 0) {
                             hideKeyboard(); addEntry()
                         }
                         .padding(.horizontal, 20)
@@ -611,16 +671,26 @@ struct AddCustomMealToDiarySheet: View {
         .onAppear { updateMacros() }
     }
 
+    /// Passando da una modalità all'altra si mantiene la stessa quantità.
+    private func switchMode(toWeight: Bool) {
+        if toWeight {
+            gramsStr = (chosenPortions * meal.gramsPerPortion).smartFormat
+        } else {
+            portionsStr = (max(parse(gramsStr), 0) / max(meal.gramsPerPortion, 0.01)).smartFormat
+        }
+        updateMacros()
+    }
+
     private func updateMacros() {
-        let p = chosenPortions
-        kcalStr    = (meal.kcalPerPortion * p).smartFormat
-        proteinStr = (meal.proteinPerPortion * p).smartFormat
-        carbsStr   = (meal.carbsPerPortion * p).smartFormat
-        fatStr     = (meal.fatPerPortion * p).smartFormat
+        let f = fraction
+        kcalStr    = (meal.totalKcal * f).smartFormat
+        proteinStr = (meal.totalProtein * f).smartFormat
+        carbsStr   = (meal.totalCarbs * f).smartFormat
+        fatStr     = (meal.totalFat * f).smartFormat
     }
 
     private func addEntry() {
-        let totalGrams = meal.ingredients.reduce(0) { $0 + $1.grams } * chosenPortions / max(meal.portions, 1)
+        let totalGrams = eatenGrams
         let tempFood = FoodItem(
             name: meal.name,
             kcalPer100g: parse(kcalStr) / max(totalGrams, 1) * 100,

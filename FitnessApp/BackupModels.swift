@@ -106,6 +106,7 @@ struct WorkoutSetBackup: Codable {
 struct CustomMealBackup: Codable {
     var name: String; var portions: Double
     var ingredients: [CustomMealIngredientBackup]
+    var totalWeight: Double?
 }
 
 struct CustomMealIngredientBackup: Codable {

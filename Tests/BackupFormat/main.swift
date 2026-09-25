@@ -54,7 +54,7 @@ let mealIngredient = CustomMealIngredientBackup(foodName: "Pasta", grams: 160,
                                                 kcal: 362, protein: 13, carbs: 75, fat: 1,
                                                 fiber: 3, sugar: 3, saturatedFat: 0.2, salt: 0)
 let customMeals = [CustomMealBackup(name: "Pasta al tonno", portions: 2,
-                                    ingredients: [mealIngredient])]
+                                    ingredients: [mealIngredient], totalWeight: 420)]
 
 let exercises = [ExerciseBackup(name: "Panca Piana", muscleGroup: "Petto", notes: "",
                                 defaultSets: 4, defaultReps: 8,
@@ -118,6 +118,7 @@ check("voci diario", back.entries.count == 1)
 check("calorie attive del giorno", back.logs.first?.activeCaloriesBurned == 612)
 check("piatti personalizzati", back.customMeals?.count == 1)
 check("ingredienti del piatto", back.customMeals?.first?.ingredients.first?.foodName == "Pasta")
+check("peso totale del piatto", back.customMeals?.first?.totalWeight == 420)
 check("schede", back.workoutTemplates?.count == 1)
 check("serie nella scheda", back.workoutTemplates?.first?.templateExercises?.first?.templateSets?.count == 1)
 check("sessioni palestra", back.workoutSessions?.count == 1)

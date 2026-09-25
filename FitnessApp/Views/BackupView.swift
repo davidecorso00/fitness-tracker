@@ -99,7 +99,8 @@ final class BackupManager {
                             kcal: ing.kcalPer100g, protein: ing.proteinPer100g, carbs: ing.carbsPer100g,
                             fat: ing.fatPer100g, fiber: ing.fiberPer100g, sugar: ing.sugarPer100g,
                             saturatedFat: ing.saturatedFatPer100g, salt: ing.saltPer100g)
-                    })
+                    },
+                    totalWeight: cm.totalWeight)
             },
             exercises: exs.map { ExerciseBackup(name: $0.name, muscleGroup: $0.muscleGroup, notes: $0.notes, defaultSets: $0.defaultSets, defaultReps: $0.defaultReps, defaultWeight: $0.defaultWeight, defaultRestSeconds: $0.defaultRestSeconds) },
             workoutTemplates: wTemplates.map { t in
@@ -328,6 +329,7 @@ final class BackupManager {
 
         for cm in backup.customMeals ?? [] {
             let meal = CustomMeal(); meal.name = cm.name; meal.portions = cm.portions
+            meal.totalWeight = cm.totalWeight ?? 0
             context.insert(meal)
             for bi in cm.ingredients {
                 let ing = CustomMealIngredient()
