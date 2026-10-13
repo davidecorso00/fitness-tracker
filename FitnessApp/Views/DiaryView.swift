@@ -762,8 +762,11 @@ struct QuickAddSheet: View {
         _sugar        = State(initialValue: text(prefill?.sugar))
         _saturatedFat = State(initialValue: text(prefill?.saturatedFat))
         _salt         = State(initialValue: text(prefill?.salt))
-        _grams        = State(initialValue: prefill.map { $0.grams > 0 ? $0.grams.smartFormat : "100" } ?? "100")
-        _scaledGrams  = State(initialValue: prefill.map { $0.grams > 0 ? $0.grams : 100 } ?? 100)
+        let gramsText = prefill.map { $0.grams > 0 ? $0.grams.smartFormat : "100" } ?? "100"
+        _grams        = State(initialValue: gramsText)
+        // Gli stessi grammi mostrati nel campo (arrotondati), altrimenti il
+        // ricalcolo scatterebbe già all'apertura.
+        _scaledGrams  = State(initialValue: Double(gramsText) ?? 100)
         _scaledTexts  = State(initialValue: [prefill?.kcal, prefill?.protein, prefill?.carbs, prefill?.fat,
                                              prefill?.fiber, prefill?.sugar, prefill?.saturatedFat,
                                              prefill?.salt].map(text))

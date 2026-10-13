@@ -132,10 +132,10 @@ enum GymColor: String, Codable, CaseIterable {
     var liters: Double = 0
     var date: Date = Date()
 
-    init(dayKey: String, liters: Double) {
+    init(dayKey: String, liters: Double, date: Date = Date()) {
         self.dayKey = dayKey
         self.liters = liters
-        self.date = Date()
+        self.date = date
     }
 }
 

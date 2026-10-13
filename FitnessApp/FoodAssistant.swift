@@ -240,6 +240,7 @@ private struct AIRawReply: Decodable {
         let meal: String?
         let date: String
         let time: String
+        let replaces_previous: Bool
         let items: [Item]
     }
     let reply: String
@@ -280,8 +281,11 @@ enum FoodAssistantClient {
     6. Se non si capisce che cosa ha mangiato (per esempio la foto non è chiara) chiedi in reply \
     e metti proposal a null. Se invece puoi fare una stima ragionevole, proponi e scrivi in reply, \
     in una o due frasi, le ipotesi che hai fatto (quantità, condimenti).
-    7. Se l'utente corregge una proposta ("era più grande", "era ieri", "senza olio"), rifai la \
-    proposta completa aggiornata.
+    7. Se l'utente corregge la tua ultima proposta non ancora confermata ("era più grande", "era \
+    ieri", "senza olio"), rifai la proposta completa aggiornata con replaces_previous true. Se \
+    invece nomina un cibo diverso mentre una proposta è ancora da confermare, proponi solo il cibo \
+    nuovo con replaces_previous false: quella precedente resta valida. Nella prima proposta di una \
+    conversazione replaces_previous è false.
     8. Per messaggi che non riguardano il cibo rispondi brevemente in reply con proposal null.
     9. Le note dell'app tra parentesi quadre ti dicono se una tua proposta è stata aggiunta al \
     diario o rifiutata. Una proposta aggiunta è già nel diario: se poi l'utente nomina altro \
@@ -315,9 +319,10 @@ enum FoodAssistantClient {
                 "meal": nullable(["type": "string", "enum": MealType.allCases.map(\.rawValue)]),
                 "date": ["type": "string"],
                 "time": ["type": "string"],
+                "replaces_previous": ["type": "boolean"],
                 "items": ["type": "array", "items": item],
             ],
-            "required": ["name", "meal", "date", "time", "items"],
+            "required": ["name", "meal", "date", "time", "replaces_previous", "items"],
             "additionalProperties": false,
         ]
         return [
@@ -452,10 +457,13 @@ struct AIRawReplyProposal {
     let meal: String?
     let date: String
     let time: String
+    /// La proposta corregge l'ultima ancora da confermare.
+    let replacesPrevious: Bool
     let items: [Item]
 
     fileprivate init(_ p: AIRawReply.Proposal) {
         name = p.name; meal = p.meal; date = p.date; time = p.time
+        replacesPrevious = p.replaces_previous
         items = p.items.map {
             Item(name: $0.name, grams: $0.grams, foodID: $0.food_id, dishID: $0.dish_id,
                  kcal: $0.kcal, protein: $0.protein, carbs: $0.carbs, fat: $0.fat,
@@ -464,20 +472,25 @@ struct AIRawReplyProposal {
     }
 
     /// Valori finali: per gli alimenti e i piatti del database contano i dati
-    /// salvati, non la stima del modello. Pasto: quello indicato, altrimenti
-    /// dall'orario detto, altrimenti dall'ora del messaggio.
-    func resolve(catalog: AIFoodCatalog, sentAt: Date) -> AIFoodProposal? {
+    /// salvati, non la stima del modello. Gli id si leggono sul catalogo che ha
+    /// visto il modello (`catalog`), i valori su quello di adesso (`live`): se
+    /// nel frattempo un alimento è stato modificato valgono i dati nuovi, se è
+    /// stato eliminato vale la stima del modello. Pasto: quello indicato,
+    /// altrimenti dall'ora del pasto, altrimenti dall'ora del messaggio.
+    func resolve(catalog: AIFoodCatalog, live: AIFoodCatalog, sentAt: Date) -> AIFoodProposal? {
         let resolved: [AIFoodItem] = items.compactMap { item in
             let grams = max(item.grams, 0)
-            if let id = item.foodID, catalog.foods.indices.contains(id) {
-                let f = catalog.foods[id], k = grams / 100
+            if let id = item.foodID, catalog.foods.indices.contains(id),
+               let f = live.foods.first(where: { $0.name == catalog.foods[id].name }) {
+                let k = grams / 100
                 return AIFoodItem(name: f.name, grams: grams, source: .database,
                                   kcal: f.kcal * k, protein: f.protein * k, carbs: f.carbs * k,
                                   fat: f.fat * k, fiber: f.fiber * k, sugar: f.sugar * k,
                                   saturatedFat: f.saturatedFat * k, salt: f.salt * k)
             }
-            if let id = item.dishID, catalog.dishes.indices.contains(id), catalog.dishes[id].weight > 0 {
-                let d = catalog.dishes[id], k = grams / d.weight
+            if let id = item.dishID, catalog.dishes.indices.contains(id),
+               let d = live.dishes.first(where: { $0.name == catalog.dishes[id].name }), d.weight > 0 {
+                let k = grams / d.weight
                 return AIFoodItem(name: d.name, grams: grams, source: .dish,
                                   kcal: d.kcal * k, protein: d.protein * k, carbs: d.carbs * k,
                                   fat: d.fat * k, fiber: d.fiber * k, sugar: d.sugar * k,
@@ -553,8 +566,9 @@ final class FoodAssistantSession: ObservableObject {
         }
 
         let now = Date()
+        let (notes, reported) = pendingNotes()
         let userContent = FoodAssistantClient.userContent(text: trimmed, image: image, now: now,
-                                                          notes: pendingNotes())
+                                                          notes: notes)
         messages.append(AIChatMessage(role: .user, text: trimmed, image: image, apiUserContent: userContent))
         isSending = true
 
@@ -566,13 +580,15 @@ final class FoodAssistantSession: ObservableObject {
             defer { isSending = false }
             do {
                 let result = try await FoodAssistantClient.send(messages: history, catalog: catalog, apiKey: key)
-                let proposal = result.proposal?.resolve(catalog: catalog, sentAt: now)
-                // Una proposta nuova sostituisce quelle ancora da confermare: dopo
-                // una correzione non si deve poter aggiungere anche la vecchia.
-                if proposal != nil {
-                    for i in messages.indices where messages[i].proposal?.state == .pending {
-                        messages[i].proposal?.state = .superseded
-                    }
+                // Le note sono arrivate al modello solo adesso che la richiesta è riuscita.
+                for (id, state) in reported { reportedStates[id] = state }
+                let live = AIFoodCatalog.load(context: context)
+                let proposal = result.proposal?.resolve(catalog: catalog, live: live, sentAt: now)
+                // Una correzione sostituisce l'ultima proposta ancora da confermare:
+                // non si deve poter aggiungere anche la vecchia. Un cibo diverso no.
+                if proposal != nil, result.proposal?.replacesPrevious == true,
+                   let i = messages.lastIndex(where: { $0.proposal?.state == .pending }) {
+                    messages[i].proposal?.state = .superseded
                 }
                 messages.append(AIChatMessage(role: .assistant, text: result.reply,
                                               proposal: proposal, apiContent: result.content))
@@ -602,8 +618,11 @@ final class FoodAssistantSession: ObservableObject {
 
     /// Esiti delle proposte (aggiunta, rifiutata) non ancora comunicati al
     /// modello: vanno nel prossimo messaggio, così non ripropone cibi già nel diario.
-    private func pendingNotes() -> [String] {
+    /// Restituisce anche gli esiti da segnare come comunicati, cosa che si fa solo
+    /// se la richiesta va a buon fine.
+    private func pendingNotes() -> (notes: [String], reported: [(UUID, AIFoodProposal.State)]) {
         var notes: [String] = []
+        var reported: [(UUID, AIFoodProposal.State)] = []
         for m in messages {
             guard let p = m.proposal, reportedStates[m.id] != p.state else { continue }
             switch p.state {
@@ -614,9 +633,9 @@ final class FoodAssistantSession: ObservableObject {
             case .pending, .superseded:
                 continue
             }
-            reportedStates[m.id] = p.state
+            reported.append((m.id, p.state))
         }
-        return notes
+        return (notes, reported)
     }
 
     /// Cronologia per l'API: solo i turni andati a buon fine, alternati utente

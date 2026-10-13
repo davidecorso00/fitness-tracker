@@ -95,7 +95,7 @@ final class PhoneWatchSession: NSObject {
         let when = min(loggedAt ?? Date(), Date())
         switch action {
         case .logWater(let liters):
-            context.insert(WaterEntry(dayKey: when.dateKey, liters: liters))
+            context.insert(WaterEntry(dayKey: when.dateKey, liters: liters, date: when))
         case .logQuickFood(let food):
             let meal = MealType(rawValue: food.meal) ?? .snack
             context.insert(FoodEntry(

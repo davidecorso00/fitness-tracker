@@ -230,21 +230,21 @@ struct TodayView: View {
                             WeeklyRunGoalCard(targetKm: runTarget)
                         }
 
-                        // Palestra — dots distribuiti su tutta la riga
-                        if let log = dayLog {
-                            HTCard {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    SectionLabel(text: "Palestra oggi")
-                                    GlassEffectContainer {
-                                        HStack(spacing: 0) {
-                                            ForEach(GymColor.allCases, id: \.self) { gc in
-                                                GymDot(gymColor: gc, isSelected: log.gymColor == gc) {
-                                                    log.gymColor = gc
-                                                    try? context.save()
-                                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                                }
-                                                .frame(maxWidth: .infinity)
+                        // Palestra — dots distribuiti su tutta la riga. Sempre visibile:
+                        // la riga del giorno si crea al primo tocco se non c'è ancora.
+                        HTCard {
+                            VStack(alignment: .leading, spacing: 10) {
+                                SectionLabel(text: "Palestra oggi")
+                                GlassEffectContainer {
+                                    HStack(spacing: 0) {
+                                        ForEach(GymColor.allCases, id: \.self) { gc in
+                                            GymDot(gymColor: gc, isSelected: (dayLog?.gymColor ?? .rest) == gc) {
+                                                let log = appState.dayLog(for: currentKey, context: context)
+                                                log.gymColor = gc
+                                                try? context.save()
+                                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                             }
+                                            .frame(maxWidth: .infinity)
                                         }
                                     }
                                 }

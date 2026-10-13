@@ -189,6 +189,10 @@ final class HealthKitManager {
         if let existing = try? context.fetch(descriptor).first {
             log = existing
         } else {
+            // Niente righe vuote per i giorni senza dati: allungherebbero i
+            // grafici all'indietro con giorni bianchi. La card palestra del
+            // Sommario crea la riga da sola quando serve.
+            guard s > 0 || ac > 0 else { return }
             log = DayLog(dateKey: key)
             context.insert(log)
         }
@@ -382,9 +386,12 @@ final class HealthKitManager {
         }
         if changed { try? context.save() }
         lastBackfillAt = Date()
-        // Risposta vuota (permessi negati, storico di Salute non ancora scaricato):
-        // l'intervallo lungo resta da rileggere alla prossima apertura.
-        guard !steps.isEmpty || !active.isEmpty else { return }
+        // Nessun dato più vecchio degli ultimi giorni (permessi negati, storico
+        // di Salute non ancora scaricato su un telefono nuovo, che però ha già
+        // i passi di oggi): l'intervallo lungo resta da rileggere alla prossima apertura.
+        let olderKey = today.adding(days: -2).dateKey
+        guard steps.keys.contains(where: { $0 < olderKey }) || active.keys.contains(where: { $0 < olderKey })
+        else { return }
         UserDefaults.standard.set(today.adding(days: -1).dateKey, forKey: Self.backfillDoneKey)
     }
 
