@@ -7,7 +7,7 @@ import Foundation
 //
 // I pulsanti stanno nell'estensione widget, ma una LiveActivityIntent viene
 // eseguita nel processo dell'app: è l'app a impostare `RunControl.handler`
-// (RootView), nell'estensione resta nil. Per questo il file sta in Shared/:
+// (RunControlHandler, all'avvio), nell'estensione resta nil. Per questo il file sta in Shared/:
 // l'intent dev'essere compilato in entrambi i target.
 // Non compaiono in Comandi Rapidi e Spotlight (isDiscoverable = false): servono
 // l'id della card, che si conosce solo dalla Live Activity.
