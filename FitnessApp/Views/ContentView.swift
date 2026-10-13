@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import SwiftData
 
 struct RootView: View {
@@ -63,11 +64,19 @@ struct RootView: View {
             appState.setupInitialTargets(context: context)
             preservedStorePath = StoreRecovery.preservedPath
             if PausaSignal.consuma() { mostraPausa = true }
+            Task { await HealthKitManager.shared.backfillRecentDays(context: context) }
         }
         // Il controllo del Centro di Controllo lascia un segnale nel gruppo
         // condiviso e apre l'app: qui lo si raccoglie.
         .onChange(of: scenePhase) { _, fase in
-            if fase == .active, PausaSignal.consuma() { mostraPausa = true }
+            guard fase == .active else { return }
+            if PausaSignal.consuma() { mostraPausa = true }
+            appState.rollOverToTodayIfNeeded()
+            Task { await HealthKitManager.shared.backfillRecentDays(context: context) }
+        }
+        // Mezzanotte con l'app aperta.
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            appState.rollOverToTodayIfNeeded()
         }
         // Deep link dal widget: dcfitness://sommario, ://cibo, ://acqua
         .onOpenURL { url in

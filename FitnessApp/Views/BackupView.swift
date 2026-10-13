@@ -228,6 +228,9 @@ final class BackupManager {
             let dummyFood = FoodItem(name: e.foodName, kcalPer100g: 0, proteinPer100g: 0,
                 carbsPer100g: 0, fatPer100g: 0)
             let entry = FoodEntry(food: dummyFood, grams: e.grams, meal: meal, date: e.date)
+            // Il giorno salvato, non quello ricalcolato dall'orario: con un altro
+            // fuso orario una voce di mezzanotte finirebbe sul giorno prima.
+            if !e.dayKey.isEmpty { entry.dayKey = e.dayKey }
             entry.kcalSnapshot = e.kcal; entry.proteinSnapshot = e.protein
             entry.carbsSnapshot = e.carbs; entry.fatSnapshot = e.fat
             entry.fiberSnapshot = e.fiber; entry.sugarSnapshot = e.sugar

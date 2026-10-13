@@ -50,9 +50,12 @@ struct ResultsView: View {
         let sportByDay = allSports.sportKcalByDay()
         let logByDay   = allLogs.reduce(into: [String: DayLog]()) { $0[$1.dateKey] = $1 }
 
-        // Running last-known weight (allLogs is sorted ascending by dateKey).
-        // Prima della prima pesata si usa la prima disponibile.
-        var lastWeight: Double? = allLogs.first { $0.weight != nil }?.weight
+        // Running last-known weight (allLogs is sorted ascending by dateKey):
+        // si parte dall'ultima pesata prima dell'inizio, altrimenti dalla prima
+        // disponibile, come nei Grafici e nelle Predizioni.
+        let startKey = Calendar.current.startOfDay(for: lim.startDate).dateKey
+        var lastWeight: Double? = allLogs.last { $0.dateKey < startKey && $0.weight != nil }?.weight
+            ?? allLogs.first { $0.weight != nil }?.weight
 
         let profile = allProfiles.first
         let today = Calendar.current.startOfDay(for: Date())

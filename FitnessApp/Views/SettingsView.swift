@@ -69,13 +69,24 @@ struct SettingsView: View {
                                         .font(.system(size: 15, weight: .medium))
                                         .foregroundColor(Color(hex: "cccccc"))
                                     Spacer()
-                                    DatePicker("", selection: Binding(
-                                        get: { prof.birthDate ?? Calendar.current.date(byAdding: .year, value: -25, to: Date())! },
-                                        set: { prof.birthDate = $0; save() }
-                                    ), displayedComponents: .date)
-                                    .labelsHidden()
-                                    .colorScheme(.dark)
-                                    .tint(.acc2)
+                                    // Senza data di nascita il metabolismo basale non si calcola:
+                                    // un selettore con una data finta sembrava già compilato.
+                                    if prof.birthDate != nil {
+                                        DatePicker("", selection: Binding(
+                                            get: { prof.birthDate ?? Date() },
+                                            set: { prof.birthDate = $0; save() }
+                                        ), displayedComponents: .date)
+                                        .labelsHidden()
+                                        .colorScheme(.dark)
+                                        .tint(.acc2)
+                                    } else {
+                                        Button("Imposta") {
+                                            prof.birthDate = Calendar.current.date(byAdding: .year, value: -25, to: Date())
+                                            save()
+                                        }
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.acc2)
+                                    }
                                 }
                                 .padding(.horizontal, 18).padding(.vertical, 13)
                                 .overlay(alignment: .top) {

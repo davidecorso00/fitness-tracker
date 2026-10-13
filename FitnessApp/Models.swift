@@ -106,10 +106,13 @@ import Foundation
     /// Calorie bruciate da movimento (HealthKit activeEnergy) o stima da passi.
     /// La quota BMR × 1.2 viene calcolata e aggiunta a livello superiore.
     var burnedKcal: Int {
-        let gymBonus = gymColor == .rest ? 0 : 150
+        // L'energia attiva di Salute comprende già l'allenamento in palestra (il
+        // Watch la misura tutto il giorno): i 150 kcal fissi valgono solo per le
+        // stime dai passi, che la palestra non la vedono.
         if activeCaloriesBurned > 0 {
-            return Int(activeCaloriesBurned) + gymBonus
+            return Int(activeCaloriesBurned)
         }
+        let gymBonus = gymColor == .rest ? 0 : 150
         if steps > 0 {
             return Int(Double(steps) * 0.04) + gymBonus
         }

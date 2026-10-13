@@ -124,6 +124,20 @@ final class AppState: ObservableObject {
     func goBack()    { currentDate = currentDate.adding(days: -1) }
     func goForward() { currentDate = currentDate.adding(days: 1) }
 
+    /// Il giorno che era "oggi" l'ultima volta che è stato controllato.
+    private var lastKnownToday = Calendar.current.startOfDay(for: Date())
+
+    /// Se l'app resta aperta durante la notte, il diario restava sul giorno prima
+    /// e i pasti del mattino finivano lì: un giorno con il doppio del cibo e uno
+    /// vuoto. Se si stava guardando "oggi", si passa al nuovo oggi; se si stava
+    /// guardando un altro giorno, si resta lì.
+    func rollOverToTodayIfNeeded() {
+        let today = Calendar.current.startOfDay(for: Date())
+        guard today != lastKnownToday else { return }
+        if currentDate == lastKnownToday { currentDate = today }
+        lastKnownToday = today
+    }
+
     var canGoForward: Bool {
         let tomorrow = Calendar.current.startOfDay(for: Date()).adding(days: 1)
         return currentDate < tomorrow

@@ -203,7 +203,7 @@ struct MealSection: View {
 
                 Spacer()
 
-                if !yesterdayEntries.isEmpty {
+                if !yesterdayEntries.isEmpty && !yesterdayAlreadyCopied {
                     Button { copyYesterday() } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.turn.down.left")
@@ -259,6 +259,17 @@ struct MealSection: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
+    /// Il pasto di ieri è già tutto qui (stessi alimenti e grammi): il pulsante
+    /// sparisce, così un secondo tocco non lo duplica.
+    private var yesterdayAlreadyCopied: Bool {
+        var today = entries.map { "\($0.foodName)|\($0.grams)" }
+        for e in yesterdayEntries {
+            guard let i = today.firstIndex(of: "\(e.foodName)|\(e.grams)") else { return false }
+            today.remove(at: i)
+        }
+        return true
+    }
+
     private func copyYesterday() {
         let copied = QuickLog.copyMeal(yesterdayEntries, to: date, meal: meal, context: context)
         if copied > 0 { UINotificationFeedbackGenerator().notificationOccurred(.success) }
@@ -297,7 +308,7 @@ struct EditEntrySheet: View {
                             .frame(maxWidth: 200)
 
                         if let g = Double(gramsInput.replacingOccurrences(of: ",", with: ".")), g > 0 {
-                            let ratio = g / max(entry.grams, 1)
+                            let ratio = entry.grams > 0 ? g / entry.grams : 1
                             let newKcal = entry.kcalSnapshot * ratio
                             Text("\(newKcal.smartFormat) kcal totali")
                                 .font(.system(size: 14, weight: .semibold)).foregroundColor(.acc)
@@ -330,7 +341,9 @@ struct EditEntrySheet: View {
 
     private func save() {
         guard let g = Double(gramsInput.replacingOccurrences(of: ",", with: ".")), g > 0 else { return }
-        let ratio = g / max(entry.grams, 1)
+        // Voci senza peso (piatti senza grammi): i valori sono già il totale,
+        // il peso inserito si salva e basta invece di moltiplicarli.
+        let ratio = entry.grams > 0 ? g / entry.grams : 1
         entry.grams = g
         entry.kcalSnapshot         *= ratio
         entry.proteinSnapshot      *= ratio

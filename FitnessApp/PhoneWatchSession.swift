@@ -119,6 +119,12 @@ extension PhoneWatchSession: WCSessionDelegate {
         self.session(session, didReceiveMessage: message)
         replyHandler(["ok": true])
     }
+
+    /// La coda affidabile che il Watch usa quando il telefono non è raggiungibile:
+    /// senza questo, cibo e acqua registrati dal polso in quel momento andavano persi.
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        self.session(session, didReceiveMessage: userInfo)
+    }
 }
 
 #else

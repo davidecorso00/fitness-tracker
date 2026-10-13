@@ -189,6 +189,9 @@ final class HealthKitManager {
         if let existing = try? context.fetch(descriptor).first {
             log = existing
         } else {
+            // Niente righe vuote per i giorni senza dati: allungherebbero i
+            // grafici all'indietro con giorni bianchi.
+            guard s > 0 || ac > 0 else { return }
             log = DayLog(dateKey: key)
             context.insert(log)
         }
@@ -295,6 +298,124 @@ final class HealthKitManager {
         [stepsObserver, activeObserver].compactMap { $0 }.forEach { healthStore.stop($0) }
         stepsObserver  = nil
         activeObserver = nil
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: - Recupero dei giorni passati
+    // ─────────────────────────────────────────────────────────────────────
+
+    private var isBackfilling = false
+    private var lastBackfillAt: Date?
+    private static let backfillDoneKey = "healthBackfillDoneThrough"
+
+    /// Rilegge da Salute passi ed energia attiva dei giorni recenti.
+    ///
+    /// Il DayLog di un giorno si aggiorna solo quando quel giorno è aperto nel
+    /// Sommario, o quando l'observer in background si sveglia (e quello guarda
+    /// sempre "oggi"). Il movimento fatto dopo l'ultima apertura e i dati del
+    /// Watch arrivati dopo mezzanotte restavano fuori, e i giorni passati
+    /// risultavano con un consumo troppo basso. Va chiamato con l'app in primo
+    /// piano: a telefono bloccato Salute non si può leggere.
+    func backfillRecentDays(context: ModelContext) async {
+        guard isAvailable, !isBackfilling else { return }
+        if let last = lastBackfillAt, Date().timeIntervalSince(last) < 600 { return }
+        isBackfilling = true
+        defer { isBackfilling = false }
+        await requestAuthorization()
+
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let end = today.adding(days: 1)
+        let trackingStart = cal.startOfDay(
+            for: (try? context.fetch(FetchDescriptor<AppLimits>()))?.first?.startDate ?? today)
+
+        // Prima volta: fino a 90 giorni (o dall'inizio del tracciamento, se è
+        // prima), massimo un anno. Poi dall'ultimo recupero, e sempre gli ultimi
+        // due giorni, perché i dati del Watch arrivano anche in ritardo.
+        let start: Date
+        if let done = UserDefaults.standard.string(forKey: Self.backfillDoneKey),
+           let doneDate = dateFromKey(done) {
+            start = min(doneDate, today.adding(days: -2))
+        } else {
+            start = max(min(trackingStart, today.adding(days: -90)), today.adding(days: -365))
+        }
+
+        // Una query per tipo su tutto l'intervallo. Se una fallisce non si scrive
+        // niente: meglio tenere i valori vecchi che azzerarli.
+        guard let steps = await dailySums(.stepCount, from: start, to: end),
+              let active = await dailySums(.activeEnergyBurned, from: start, to: end) else { return }
+
+        let startKey = start.dateKey
+        let existing = (try? context.fetch(FetchDescriptor<DayLog>(
+            predicate: #Predicate { $0.dateKey >= startKey }))) ?? []
+        var byKey = Dictionary(existing.map { ($0.dateKey, $0) }, uniquingKeysWith: { first, _ in first })
+        let trackingKey = trackingStart.dateKey
+        let recentKey = today.adding(days: -7).dateKey
+
+        var changed = false
+        for key in Set(steps.keys).union(active.keys) {
+            let s = steps[key] ?? 0, a = active[key] ?? 0
+            guard s > 0 || a > 0 else { continue }
+            let log: DayLog
+            if let found = byKey[key] {
+                log = found
+            } else {
+                // Righe nuove solo dall'inizio del tracciamento in poi.
+                guard key >= trackingKey else { continue }
+                log = DayLog(dateKey: key)
+                context.insert(log)
+                byKey[key] = log
+                changed = true
+            }
+            // Ultima settimana: vale Salute, anche se il totale è sceso (doppioni
+            // iPhone/Watch eliminati). Più indietro solo in aumento: lo storico di
+            // Salute su un telefono nuovo può essere ancora incompleto.
+            let recent = key >= recentKey
+            if s > 0 {
+                let newSteps = recent ? Int(s) : max(log.steps, Int(s))
+                if newSteps != log.steps { log.steps = newSteps; changed = true }
+            }
+            if a > 0 {
+                let newActive = recent ? a : max(log.activeCaloriesBurned, a)
+                if abs(newActive - log.activeCaloriesBurned) >= 1 {
+                    log.activeCaloriesBurned = newActive
+                    changed = true
+                }
+            }
+        }
+        if changed { try? context.save() }
+        UserDefaults.standard.set(today.adding(days: -1).dateKey, forKey: Self.backfillDoneKey)
+        lastBackfillAt = Date()
+    }
+
+    /// Somme giornaliere di un tipo, per chiave giorno. `nil` se la query fallisce.
+    private func dailySums(_ id: HKQuantityTypeIdentifier, from start: Date,
+                           to end: Date) async -> [String: Double]? {
+        let isEnergy = id == .activeEnergyBurned
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let pairs: [(Date, Double)]? = await withCheckedContinuation { cont in
+            let query = HKStatisticsCollectionQuery(
+                quantityType: HKQuantityType(id),
+                quantitySamplePredicate: predicate,
+                options: .cumulativeSum,
+                anchorDate: start,
+                intervalComponents: DateComponents(day: 1))
+            query.initialResultsHandler = { _, collection, error in
+                guard let collection, error == nil else { cont.resume(returning: nil); return }
+                // Unità create qui: l'handler gira su una coda di HealthKit.
+                let unit: HKUnit = isEnergy ? .kilocalorie() : .count()
+                var result: [(Date, Double)] = []
+                collection.enumerateStatistics(from: start, to: end) { stats, _ in
+                    if let sum = stats.sumQuantity() {
+                        result.append((stats.startDate, sum.doubleValue(for: unit)))
+                    }
+                }
+                cont.resume(returning: result)
+            }
+            healthStore.execute(query)
+        }
+        guard let pairs else { return nil }
+        return Dictionary(pairs.map { ($0.0.dateKey, $0.1) }, uniquingKeysWith: +)
     }
 
     // ─────────────────────────────────────────────────────────────────────
