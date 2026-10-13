@@ -398,9 +398,9 @@ enum FoodAssistantClient {
             "max_tokens": 16000,
             "fallbacks": "default",
             "output_config": [
-                // "low" è il punto di partenza consigliato per estrazione e chat:
-                // il modello ragiona solo quando serve, e costa meno.
-                "effort": "low",
+                // "high": il modello ragiona prima di quasi ogni risposta, utile per
+                // stimare porzioni e valori. Costa di più in token di uscita.
+                "effort": "high",
                 "format": ["type": "json_schema", "schema": schema],
             ],
             // Istruzioni fisse, poi il database: la parte comune a tutti i turni
