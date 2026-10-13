@@ -78,15 +78,17 @@ struct ResultsView: View {
             // tutta la giornata, i pasti non ancora.
             guard date < today else { continue }
 
-            if eaten > 0 { s.totalKcalEaten += eaten; daysWithKcal += 1 }
+            // I giorni senza cibo registrato restano fuori da tutti i calcoli sulle calorie.
+            guard eaten > 0 else { continue }
+            s.totalKcalEaten += eaten; daysWithKcal += 1
 
             // Senza basale (profilo incompleto) il giorno non entra nel deficit:
             // contarlo come 0 lo farebbe sembrare un surplus di ~2000 kcal.
             // "Bruciate" = basale × 1,2 + movimento, come nella schermata Oggi.
             let resting = restingKcal(profile: profile, weightKg: lastWeight, on: date)
-            if resting > 0 { s.totalKcalBurned += resting + activity; daysWithBurn += 1 }
-            if eaten > 0, resting > 0 {
+            if resting > 0 {
                 let totalBurn = resting + activity
+                s.totalKcalBurned += totalBurn; daysWithBurn += 1
                 let deficit = totalBurn - eaten
                 s.totalDeficit += deficit
                 s.fatLostKg    += deficit / 7700.0
