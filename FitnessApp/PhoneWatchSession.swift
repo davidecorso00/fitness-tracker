@@ -78,15 +78,28 @@ final class PhoneWatchSession: NSObject {
 
     // MARK: - Applicazione delle azioni
 
-    fileprivate func apply(_ action: WatchAction) {
+    private static let appliedIDsKey = "watchAppliedActionIDs"
+
+    /// `id` e `loggedAt` arrivano dal Watch (assenti nelle versioni precedenti).
+    fileprivate func apply(_ action: WatchAction, id: String? = nil, loggedAt: Date? = nil) {
         guard let context = container?.mainContext else { return }
+        // La stessa azione può arrivare due volte: come messaggio e poi dalla coda
+        // di riserva, se la risposta al Watch si è persa.
+        if let id {
+            var applied = UserDefaults.standard.stringArray(forKey: Self.appliedIDsKey) ?? []
+            guard !applied.contains(id) else { return }
+            applied.append(id)
+            UserDefaults.standard.set(Array(applied.suffix(200)), forKey: Self.appliedIDsKey)
+        }
+        // Dalla coda può arrivare ore dopo: vale l'ora in cui è stata fatta al polso.
+        let when = min(loggedAt ?? Date(), Date())
         switch action {
         case .logWater(let liters):
-            context.insert(WaterEntry(dayKey: Date().dateKey, liters: liters))
+            context.insert(WaterEntry(dayKey: when.dateKey, liters: liters))
         case .logQuickFood(let food):
             let meal = MealType(rawValue: food.meal) ?? .snack
             context.insert(FoodEntry(
-                foodName: food.name, grams: food.grams, meal: meal, date: Date(),
+                foodName: food.name, grams: food.grams, meal: meal, date: when,
                 kcal: food.kcal, protein: food.protein, carbs: food.carbs, fat: food.fat))
         }
         try? context.save()
@@ -111,7 +124,9 @@ extension PhoneWatchSession: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         guard let data = message[WatchAction.messageKey] as? Data,
               let action = WatchPayload.decode(WatchAction.self, from: data) else { return }
-        Task { @MainActor in self.apply(action) }
+        let id = message[WatchAction.idKey] as? String
+        let loggedAt = (message[WatchAction.dateKey] as? Double).map { Date(timeIntervalSince1970: $0) }
+        Task { @MainActor in self.apply(action, id: id, loggedAt: loggedAt) }
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any],

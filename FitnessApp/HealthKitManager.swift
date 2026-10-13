@@ -189,9 +189,6 @@ final class HealthKitManager {
         if let existing = try? context.fetch(descriptor).first {
             log = existing
         } else {
-            // Niente righe vuote per i giorni senza dati: allungherebbero i
-            // grafici all'indietro con giorni bianchi.
-            guard s > 0 || ac > 0 else { return }
             log = DayLog(dateKey: key)
             context.insert(log)
         }
@@ -384,8 +381,11 @@ final class HealthKitManager {
             }
         }
         if changed { try? context.save() }
-        UserDefaults.standard.set(today.adding(days: -1).dateKey, forKey: Self.backfillDoneKey)
         lastBackfillAt = Date()
+        // Risposta vuota (permessi negati, storico di Salute non ancora scaricato):
+        // l'intervallo lungo resta da rileggere alla prossima apertura.
+        guard !steps.isEmpty || !active.isEmpty else { return }
+        UserDefaults.standard.set(today.adding(days: -1).dateKey, forKey: Self.backfillDoneKey)
     }
 
     /// Somme giornaliere di un tipo, per chiave giorno. `nil` se la query fallisce.

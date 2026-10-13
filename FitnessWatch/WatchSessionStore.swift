@@ -49,18 +49,25 @@ final class WatchSessionStore: NSObject, ObservableObject {
         guard WCSession.isSupported(), let data = WatchPayload.encode(action) else { return }
         let session = WCSession.default
         pendingActions += 1
+        // Stesso id e stessa ora sia nel messaggio sia nella coda di riserva.
+        let id = UUID().uuidString
+        let loggedAt = Date().timeIntervalSince1970
+        func payload() -> [String: Any] {
+            [WatchAction.messageKey: data, WatchAction.idKey: id, WatchAction.dateKey: loggedAt]
+        }
 
         if session.isReachable {
-            session.sendMessage([WatchAction.messageKey: data], replyHandler: { [weak self] _ in
+            session.sendMessage(payload(), replyHandler: { [weak self] _ in
                 Task { @MainActor in self?.pendingActions = max(0, (self?.pendingActions ?? 1) - 1) }
             }, errorHandler: { [weak self] _ in
                 // Telefono irraggiungibile a metà invio: la coda affidabile lo recapita dopo.
-                session.transferUserInfo([WatchAction.messageKey: data])
+                session.transferUserInfo([WatchAction.messageKey: data, WatchAction.idKey: id,
+                                          WatchAction.dateKey: loggedAt])
                 Task { @MainActor in self?.pendingActions = max(0, (self?.pendingActions ?? 1) - 1) }
             })
         } else {
             // Coda affidabile: arriva quando il telefono torna raggiungibile.
-            session.transferUserInfo([WatchAction.messageKey: data])
+            session.transferUserInfo(payload())
             pendingActions = max(0, pendingActions - 1)
         }
     }

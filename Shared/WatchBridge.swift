@@ -52,6 +52,11 @@ nonisolated enum WatchAction: Codable, Equatable, Sendable {
     case logQuickFood(WatchQuickFood)
 
     static let messageKey = "watchAction"
+    /// Id dell'azione: la stessa può arrivare due volte (messaggio, poi la coda
+    /// di riserva se la risposta si perde) e il telefono la applica una volta sola.
+    static let idKey = "watchActionID"
+    /// Quando è stata fatta al polso (secondi dal 1970): dalla coda può arrivare ore dopo.
+    static let dateKey = "watchActionDate"
 }
 
 // MARK: - Codifica
