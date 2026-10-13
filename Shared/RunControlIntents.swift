@@ -9,6 +9,8 @@ import Foundation
 // eseguita nel processo dell'app: è l'app a impostare `RunControl.handler`
 // (RootView), nell'estensione resta nil. Per questo il file sta in Shared/:
 // l'intent dev'essere compilato in entrambi i target.
+// Non compaiono in Comandi Rapidi e Spotlight (isDiscoverable = false): servono
+// l'id della card, che si conosce solo dalla Live Activity.
 
 nonisolated enum RunControlAction: Sendable {
     case pause, resume, requestStop, cancelStop, save
@@ -25,6 +27,7 @@ nonisolated enum RunControl {
 
 struct RunPauseIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Metti in pausa"
+    static var isDiscoverable: Bool { false }
     @Parameter(title: "Live Activity") var activityID: String
     init() {}
     init(activityID: String) { self.activityID = activityID }
@@ -36,6 +39,7 @@ struct RunPauseIntent: LiveActivityIntent {
 
 struct RunResumeIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Riprendi"
+    static var isDiscoverable: Bool { false }
     @Parameter(title: "Live Activity") var activityID: String
     init() {}
     init(activityID: String) { self.activityID = activityID }
@@ -49,6 +53,7 @@ struct RunResumeIntent: LiveActivityIntent {
 /// (Salva / Continua), così un tocco per sbaglio non chiude l'allenamento.
 struct RunRequestStopIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Termina"
+    static var isDiscoverable: Bool { false }
     @Parameter(title: "Live Activity") var activityID: String
     init() {}
     init(activityID: String) { self.activityID = activityID }
@@ -60,6 +65,7 @@ struct RunRequestStopIntent: LiveActivityIntent {
 
 struct RunCancelStopIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Continua"
+    static var isDiscoverable: Bool { false }
     @Parameter(title: "Live Activity") var activityID: String
     init() {}
     init(activityID: String) { self.activityID = activityID }
@@ -71,6 +77,7 @@ struct RunCancelStopIntent: LiveActivityIntent {
 
 struct RunSaveIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Salva"
+    static var isDiscoverable: Bool { false }
     @Parameter(title: "Live Activity") var activityID: String
     init() {}
     init(activityID: String) { self.activityID = activityID }
