@@ -478,7 +478,7 @@ struct AIKeySettingsCard: View {
                 }
                 Text("""
                      La chiave si crea su console.anthropic.com › API Keys e resta solo su questo \
-                     iPhone, nel portachiavi. Modello: Claude Opus 5.5. Ogni messaggio è addebitato \
+                     iPhone, nel portachiavi. Modello: Claude Sonnet 5.5. Ogni messaggio è addebitato \
                      sul tuo account API, separato dall'abbonamento Claude: di solito pochi centesimi. \
                      Con ogni messaggio vengono inviati ad Anthropic il testo, l'eventuale foto e \
                      l'elenco dei tuoi alimenti e piatti.

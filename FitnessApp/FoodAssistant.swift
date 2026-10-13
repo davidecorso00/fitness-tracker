@@ -219,7 +219,7 @@ enum FoodAssistantError: LocalizedError {
         case .invalidKey:  return "La chiave API non è valida o è stata revocata. Controllala in Impostazioni › Assistente AI."
         case .rateLimited: return "Troppe richieste in poco tempo. Riprova tra poco."
         case .billing:     return "Credito API esaurito o problema di pagamento: controlla Billing su console.anthropic.com."
-        case .modelUnavailable: return "Il modello Claude Opus 5.5 non è disponibile per il tuo account API."
+        case .modelUnavailable: return "Il modello Claude Sonnet 5.5 non è disponibile per il tuo account API."
         case .tooLarge:    return "Richiesta troppo grande (foto o conversazione lunga). Avvia una nuova conversazione."
         case .permission(let message): return "La chiave non ha accesso a questa richiesta. \(message)"
         case .badRequest(let message): return "Richiesta rifiutata dal servizio. \(message) Se continua, avvia una nuova conversazione."
@@ -256,7 +256,8 @@ private struct AIRawReply: Decodable {
 
 enum FoodAssistantClient {
     static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
-    static let model = "claude-opus-5-5"
+    /// Sonnet: costa circa la metà di Opus ($2 / $10 per milione di token).
+    static let model = "claude-sonnet-5-5"
 
     static let instructions = """
     Sei l'assistente nutrizionale di un'app italiana di diario alimentare. L'utente ti dice \
@@ -397,7 +398,9 @@ enum FoodAssistantClient {
             "max_tokens": 16000,
             "fallbacks": "default",
             "output_config": [
-                "effort": "medium",
+                // "low" è il punto di partenza consigliato per estrazione e chat:
+                // il modello ragiona solo quando serve, e costa meno.
+                "effort": "low",
                 "format": ["type": "json_schema", "schema": schema],
             ],
             // Istruzioni fisse, poi il database: la parte comune a tutti i turni
