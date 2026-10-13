@@ -66,23 +66,6 @@ struct TodayView: View {
         return allLogs.first { $0.dateKey < todayKey && $0.weight != nil }?.weight
     }
 
-    /// Regolarità dei pasti negli ultimi sette giorni, oggi compreso.
-    private var regolaritaPasti: MealRegularity {
-        let cal = Calendar.current
-        let oggi = cal.startOfDay(for: Date())
-        let giorni = (0..<7).reversed().map { oggi.adding(days: -$0).dateKey }
-
-        var perGiorno: [String: [FoodEntrySnapshot]] = [:]
-        for e in allEntries where giorni.contains(e.dayKey) {
-            perGiorno[e.dayKey, default: []].append(e.snapshot)
-        }
-
-        return mealRegularity(entriesByDay: perGiorno,
-                              days: giorni,
-                              now: Date(),
-                              lastMealDate: allEntries.map(\.date).max())
-    }
-
     private func kcalEaten(for key: String) -> Double {
         allEntries.filter { $0.dayKey == key }.reduce(0.0) { $0 + $1.kcalSnapshot }
     }
@@ -142,10 +125,6 @@ struct TodayView: View {
                         // "in deficit" premia il mangiare poco, e romperla pesa
                         // proprio nei giorni in cui pesa già tutto il resto.
                         if SoftMode.attiva { SoftModeBanner() }
-
-                        // Ritmo dei pasti: ha preso il posto della serie
-                        // "giorni in deficit", che premiava il mangiare poco.
-                        MealRhythmCard(regolarita: regolaritaPasti)
 
                         // TRIPLE RING CARD
                         if let lim = limits {
