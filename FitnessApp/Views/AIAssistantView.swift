@@ -59,6 +59,8 @@ struct AIAssistantView: View {
                         .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
                     }
                     .scrollDismissesKeyboard(.interactively)
+                    // Quando si apre la tastiera resta in vista l'ultimo messaggio.
+                    .defaultScrollAnchor(.bottom, for: .sizeChanges)
                     .onChange(of: assistant.messages.count) { _, _ in scrollToBottom(proxy) }
                     .onChange(of: assistant.isSending) { _, _ in scrollToBottom(proxy) }
                 }
@@ -139,7 +141,7 @@ struct AIAssistantView: View {
                 Text("Scrivi cosa hai mangiato, per esempio \"una banana non troppo grande a pranzo\", oppure manda una foto del piatto e, se vuoi, dimmi quanto era.")
                     .font(.system(size: 13)).foregroundColor(.muted)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Se non dici il pasto lo deduco dall'ora: 8–12 colazione, 12–15 pranzo, 15–19 snack, 19–21 cena, poi snack. Cerco prima tra i tuoi alimenti e piatti.")
+                Text("Se non dici il pasto lo deduco dall'ora: 8–12 colazione, 12–15 pranzo, 15–19 snack, 19–21 cena, poi snack. Cerco prima tra i tuoi alimenti e piatti (quelli salvati durante una conversazione li vedo dalla successiva).")
                     .font(.system(size: 13)).foregroundColor(.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -221,7 +223,10 @@ struct AIAssistantView: View {
                 .accessibilityLabel("Invia")
             }
         }
-        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
+        .padding(.horizontal, 16).padding(.top, 8)
+        // Con un allenamento in corso la barra "Riprendi" sta sopra il menu:
+        // la barra di scrittura sale per non finirci sotto.
+        .padding(.bottom, appState.activeWorkoutSession != nil ? 76 : 10)
         .background(Color.bg)
     }
 
@@ -346,12 +351,16 @@ struct AIProposalCard: View {
                 }
             case .declined:
                 EmptyView()
+            case .superseded:
+                Text("Sostituita dalla proposta più recente")
+                    .font(.system(size: 12)).foregroundColor(.muted)
             }
         }
         .padding(14)
         .background(Color.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
             .stroke(Color.acc.opacity(proposal.state == .pending ? 0.35 : 0), lineWidth: 1))
+        .opacity(proposal.state == .superseded ? 0.55 : 1)
     }
 
     private func sourceBadge(_ source: AIFoodItem.Source) -> some View {

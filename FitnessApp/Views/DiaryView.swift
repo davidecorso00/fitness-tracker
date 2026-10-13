@@ -557,7 +557,7 @@ struct AddFoodSheet: View {
                                 Text("Inserisci al volo")
                                     .font(.system(size: 14, weight: .bold)).foregroundColor(.gymOrange)
                                 Spacer()
-                                Text("senza salvare nel database")
+                                Text("anche senza salvarlo nel database")
                                     .font(.system(size: 11)).foregroundColor(.muted)
                             }
                             .padding(14)
@@ -725,6 +725,8 @@ struct QuickAddSheet: View {
     let date: Date
     /// Compilato dall'assistente AI: i valori si possono controllare e correggere.
     let fromAssistant: Bool
+    /// Alimento o piatto già salvato: niente opzione "salva nel database".
+    let fromDatabase: Bool
     /// Chiamato dopo il salvataggio (l'assistente segna la proposta come aggiunta).
     var onSaved: (() -> Void)? = nil
 
@@ -739,11 +741,16 @@ struct QuickAddSheet: View {
     @State private var salt: String
     @State private var grams: String
     @State private var saveToDatabase = false
+    /// Grammi a cui si riferiscono i valori compilati dall'assistente, e i valori
+    /// com'erano a quel punto: se cambi solo i grammi, i valori si ricalcolano.
+    @State private var scaledGrams: Double
+    @State private var scaledTexts: [String]
 
     init(meal: MealType, date: Date, prefill: QuickAddPrefill? = nil, onSaved: (() -> Void)? = nil) {
         self.meal = prefill?.meal ?? meal
         self.date = prefill?.date ?? date
         self.fromAssistant = prefill != nil
+        self.fromDatabase = prefill?.fromDatabase ?? false
         self.onSaved = onSaved
         func text(_ v: Double?) -> String { v.map { $0.smartFormat } ?? "" }
         _name         = State(initialValue: prefill?.name ?? "")
@@ -756,9 +763,36 @@ struct QuickAddSheet: View {
         _saturatedFat = State(initialValue: text(prefill?.saturatedFat))
         _salt         = State(initialValue: text(prefill?.salt))
         _grams        = State(initialValue: prefill.map { $0.grams > 0 ? $0.grams.smartFormat : "100" } ?? "100")
+        _scaledGrams  = State(initialValue: prefill.map { $0.grams > 0 ? $0.grams : 100 } ?? 100)
+        _scaledTexts  = State(initialValue: [prefill?.kcal, prefill?.protein, prefill?.carbs, prefill?.fat,
+                                             prefill?.fiber, prefill?.sugar, prefill?.saturatedFat,
+                                             prefill?.salt].map(text))
     }
 
-    var isValid: Bool { !name.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
+    var isValid: Bool { !trimmedName.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
+
+    private var macroTexts: [String] { [kcal, protein, carbs, fat, fiber, sugar, saturatedFat, salt] }
+
+    /// Proposta dell'assistente con i grammi cambiati e i valori lasciati com'erano:
+    /// i valori vanno riportati ai nuovi grammi. Se invece hai corretto anche i
+    /// valori, valgono quelli che hai scritto. Nell'inserimento normale i valori
+    /// sono sempre quelli scritti.
+    private var rescaleFactor: Double? {
+        guard fromAssistant, macroTexts == scaledTexts, scaledGrams > 0 else { return nil }
+        let g = parse(grams)
+        guard g > 0, abs(g - scaledGrams) > 0.0001 else { return nil }
+        return g / scaledGrams
+    }
+
+    private func rescaleNow() {
+        guard let factor = rescaleFactor else { return }
+        func scaled(_ text: String) -> String { text.isEmpty ? text : (parse(text) * factor).smartFormat }
+        let newTexts = macroTexts.map(scaled)
+        kcal = newTexts[0]; protein = newTexts[1]; carbs = newTexts[2]; fat = newTexts[3]
+        fiber = newTexts[4]; sugar = newTexts[5]; saturatedFat = newTexts[6]; salt = newTexts[7]
+        scaledTexts = newTexts
+        scaledGrams = parse(grams)
+    }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -797,15 +831,15 @@ struct QuickAddSheet: View {
                             HStack(spacing: 10) {
                                 Image(systemName: "bolt.fill")
                                     .font(.system(size: 14)).foregroundColor(.gymOrange)
-                                Text(alreadyInDatabase
-                                     ? "Nel database c'è già un alimento con questo nome: viene aggiunto solo al diario."
+                                Text(alreadyInDatabase || fromDatabase
+                                     ? "È già tra i tuoi alimenti o piatti: viene aggiunto solo al diario."
                                      : saveToDatabase
                                         ? "Verrà aggiunto al diario e salvato anche nel database."
                                         : "Verrà aggiunto solo al diario, non al database.")
                                     .font(.system(size: 13)).foregroundColor(.muted)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
-                            if !alreadyInDatabase {
+                            if !alreadyInDatabase && !fromDatabase {
                                 Toggle(isOn: $saveToDatabase) {
                                     Text("Salva anche nel database")
                                         .font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
@@ -830,6 +864,16 @@ struct QuickAddSheet: View {
                             VStack(spacing: 12) {
                                 SectionLabel(text: "Valori nutrizionali").frame(maxWidth: .infinity, alignment: .leading)
                                 NumericField(label: "Grammi",         value: $grams,   color: .txt)
+                                if rescaleFactor != nil {
+                                    HStack(spacing: 8) {
+                                        Text("I valori sono per \(scaledGrams.smartFormat) g: verranno ricalcolati per \(parse(grams).smartFormat) g.")
+                                            .font(.system(size: 12)).foregroundColor(.muted)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Spacer()
+                                        Button("Ricalcola ora") { rescaleNow() }
+                                            .font(.system(size: 12, weight: .bold)).foregroundColor(.acc)
+                                    }
+                                }
                                 NumericField(label: "Calorie (kcal)", value: $kcal,    color: .acc)
                                 NumericField(label: "Proteine (g)",   value: $protein, color: .acc)
                                 NumericField(label: "Carboidrati (g)", value: $carbs,  color: .gymBlue)
@@ -866,14 +910,16 @@ struct QuickAddSheet: View {
 
     private func save() {
         let g   = parse(grams).isZero ? 100 : parse(grams)
-        let k   = parse(kcal)
-        let p   = parse(protein)
-        let c   = parse(carbs)
-        let f   = parse(fat)
-        let fi  = parse(fiber)
-        let s   = parse(sugar)
-        let sf  = parse(saturatedFat)
-        let sa  = parse(salt)
+        // Grammi di una proposta cambiati senza toccare i valori: si ricalcolano.
+        let r   = rescaleFactor ?? 1
+        let k   = parse(kcal) * r
+        let p   = parse(protein) * r
+        let c   = parse(carbs) * r
+        let f   = parse(fat) * r
+        let fi  = parse(fiber) * r
+        let s   = parse(sugar) * r
+        let sf  = parse(saturatedFat) * r
+        let sa  = parse(salt) * r
 
         let factor = g > 0 ? 100.0 / g : 1.0
         let tempFood = FoodItem(
@@ -888,11 +934,11 @@ struct QuickAddSheet: View {
             saltPer100g: sa * factor
         )
 
+        tempFood.name = trimmedName
         let entry = FoodEntry(food: tempFood, grams: g, meal: meal, date: date)
         context.insert(entry)
         // Lo stesso alimento, con i valori per 100 g, entra anche nel database.
-        if saveToDatabase && !alreadyInDatabase {
-            tempFood.name = trimmedName
+        if saveToDatabase && !alreadyInDatabase && !fromDatabase {
             context.insert(tempFood)
         }
         try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success)

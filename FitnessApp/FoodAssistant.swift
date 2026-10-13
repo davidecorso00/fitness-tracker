@@ -69,7 +69,9 @@ struct AIFoodItem: Identifiable, Equatable {
 /// La voce di diario proposta: più alimenti nello stesso messaggio diventano
 /// un'unica voce con i valori sommati.
 struct AIFoodProposal: Equatable {
-    enum State: Equatable { case pending, accepted, declined }
+    /// `superseded`: l'assistente ha mandato una proposta più recente (per
+    /// esempio dopo una correzione), questa non si può più confermare.
+    enum State: Equatable { case pending, accepted, declined, superseded }
 
     var name: String
     var meal: MealType
@@ -87,15 +89,15 @@ struct AIFoodProposal: Equatable {
     var saturatedFat: Double { items.reduce(0) { $0 + $1.saturatedFat } }
     var salt: Double         { items.reduce(0) { $0 + $1.salt } }
 
-    /// Un solo alimento preso tale e quale dal database: è già lì, inutile
-    /// proporre di salvarlo di nuovo.
-    var isSingleDatabaseFood: Bool { items.count == 1 && items[0].source == .database }
+    /// Un solo alimento o piatto preso tale e quale dai dati salvati: è già lì,
+    /// inutile proporre di salvarlo di nuovo, e la voce prende il suo nome.
+    var isSingleSavedItem: Bool { items.count == 1 && items[0].source != .estimate }
 
     var prefill: QuickAddPrefill {
-        QuickAddPrefill(meal: meal, date: date, name: name, grams: grams,
-                        kcal: kcal, protein: protein, carbs: carbs, fat: fat,
+        QuickAddPrefill(meal: meal, date: date, name: isSingleSavedItem ? items[0].name : name,
+                        grams: grams, kcal: kcal, protein: protein, carbs: carbs, fat: fat,
                         fiber: fiber, sugar: sugar, saturatedFat: saturatedFat, salt: salt,
-                        fromDatabase: isSingleDatabaseFood)
+                        fromDatabase: isSingleSavedItem)
     }
 }
 
@@ -200,13 +202,20 @@ struct AIFoodCatalog {
 
 enum FoodAssistantError: LocalizedError {
     case missingKey, invalidKey, rateLimited, overloaded, network, refused, truncated
+    case billing, modelUnavailable, tooLarge
+    case permission(String), badRequest(String)
     case server(Int), unreadable
 
     var errorDescription: String? {
         switch self {
         case .missingKey:  return "Manca la chiave API: inseriscila in Impostazioni › Assistente AI."
         case .invalidKey:  return "La chiave API non è valida o è stata revocata. Controllala in Impostazioni › Assistente AI."
-        case .rateLimited: return "Troppe richieste o credito API esaurito. Riprova tra poco o controlla il tuo account su console.anthropic.com."
+        case .rateLimited: return "Troppe richieste in poco tempo. Riprova tra poco."
+        case .billing:     return "Credito API esaurito o problema di pagamento: controlla Billing su console.anthropic.com."
+        case .modelUnavailable: return "Il modello Claude Opus 5.5 non è disponibile per il tuo account API."
+        case .tooLarge:    return "Richiesta troppo grande (foto o conversazione lunga). Avvia una nuova conversazione."
+        case .permission(let message): return "La chiave non ha accesso a questa richiesta. \(message)"
+        case .badRequest(let message): return "Richiesta rifiutata dal servizio. \(message) Se continua, avvia una nuova conversazione."
         case .overloaded:  return "Il servizio è momentaneamente sovraccarico. Riprova tra poco."
         case .network:     return "Connessione non riuscita. Controlla internet e riprova."
         case .refused:     return "Il modello non ha risposto a questa richiesta. Prova a riformularla."
@@ -229,8 +238,8 @@ private struct AIRawReply: Decodable {
     struct Proposal: Decodable {
         let name: String
         let meal: String?
-        let time: String?
-        let day_offset: Int
+        let date: String
+        let time: String
         let items: [Item]
     }
     let reply: String
@@ -262,15 +271,22 @@ enum FoodAssistantClient {
     non a 100 g. Mettili anche per le voci prese dal database, come stima.
     4. Più alimenti nello stesso messaggio: un'unica proposta, con un nome riassuntivo (per \
     esempio "Pasta al pomodoro e insalata") e una voce in items per ciascun alimento.
-    5. Pasto: se l'utente lo dice, mettilo in meal. Se dice solo un orario ("alle 16"), mettilo \
-    in time come HH:mm e lascia meal a null. Se non dice né l'uno né l'altro, lascia entrambi a \
-    null: l'app usa l'ora del messaggio. day_offset: 0 per oggi, -1 per ieri, -2 per l'altro ieri.
+    5. Quando ha mangiato: in date (AAAA-MM-GG) e time (HH:mm). Se lo dice ("ieri sera", "alle \
+    16", "stamattina"), usa quello. Se non lo dice, usa data e ora del messaggio in cui ha \
+    descritto quel cibo, scritte all'inizio di ogni messaggio come [Messaggio inviato …]: anche \
+    quando correggi la proposta in un messaggio successivo il momento resta quello del primo. \
+    Se nomina il pasto (colazione, pranzo, cena, snack, spuntino, merenda) mettilo in meal \
+    (Snack per spuntino e merenda), altrimenti meal è null e il pasto lo deduce l'app dall'ora.
     6. Se non si capisce che cosa ha mangiato (per esempio la foto non è chiara) chiedi in reply \
     e metti proposal a null. Se invece puoi fare una stima ragionevole, proponi e scrivi in reply, \
     in una o due frasi, le ipotesi che hai fatto (quantità, condimenti).
     7. Se l'utente corregge una proposta ("era più grande", "era ieri", "senza olio"), rifai la \
     proposta completa aggiornata.
     8. Per messaggi che non riguardano il cibo rispondi brevemente in reply con proposal null.
+    9. Le note dell'app tra parentesi quadre ti dicono se una tua proposta è stata aggiunta al \
+    diario o rifiutata. Una proposta aggiunta è già nel diario: se poi l'utente nomina altro \
+    cibo, proponi solo quello nuovo. Se corregge una proposta già aggiunta, proponi la versione \
+    corretta e scrivi in reply che la voce già aggiunta va modificata o eliminata nel diario.
     Scrivi reply in italiano, in modo breve e chiaro, senza elenchi lunghi.
     """
 
@@ -297,11 +313,11 @@ enum FoodAssistantClient {
             "properties": [
                 "name": ["type": "string"],
                 "meal": nullable(["type": "string", "enum": MealType.allCases.map(\.rawValue)]),
-                "time": nullable(["type": "string"]),
-                "day_offset": ["type": "integer"],
+                "date": ["type": "string"],
+                "time": ["type": "string"],
                 "items": ["type": "array", "items": item],
             ],
-            "required": ["name", "meal", "time", "day_offset", "items"],
+            "required": ["name", "meal", "date", "time", "items"],
             "additionalProperties": false,
         ]
         return [
@@ -316,7 +332,8 @@ enum FoodAssistantClient {
     }()
 
     /// Contenuto del messaggio dell'utente: foto (se c'è), ora attuale e testo.
-    static func userContent(text: String, image: UIImage?, now: Date) -> [[String: Any]] {
+    static func userContent(text: String, image: UIImage?, now: Date,
+                            notes: [String] = []) -> [[String: Any]] {
         var content: [[String: Any]] = []
         if let image, let data = jpegData(for: image) {
             content.append(["type": "image",
@@ -325,10 +342,12 @@ enum FoodAssistantClient {
         }
         let f = DateFormatter()
         f.locale = Locale(identifier: "it_IT")
-        f.dateFormat = "EEEE d MMMM yyyy, HH:mm"
+        f.dateFormat = "EEEE d MMMM yyyy (yyyy-MM-dd), HH:mm"
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let header = (notes.map { "[Nota dell'app: \($0)]" } + ["[Messaggio inviato \(f.string(from: now))]"])
+            .joined(separator: "\n")
         content.append(["type": "text",
-                        "text": "[Messaggio inviato \(f.string(from: now))]\n\(body.isEmpty ? "(solo foto)" : body)"])
+                        "text": "\(header)\n\(body.isEmpty ? "(solo foto)" : body)"])
         return content
     }
 
@@ -385,14 +404,24 @@ enum FoodAssistantClient {
             throw FoodAssistantError.network
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        switch status {
-        case 200: break
-        case 401, 403: throw FoodAssistantError.invalidKey
-        case 429: throw FoodAssistantError.rateLimited
-        case 529: throw FoodAssistantError.overloaded
-        default:
-            if let text = String(data: data, encoding: .utf8) { print("⚠️ API \(status): \(text)") }
-            throw FoodAssistantError.server(status)
+        if status != 200 {
+            // Il messaggio d'errore dell'API dice cosa fare (credito, permessi…).
+            let errorBody = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let apiMessage = (errorBody?["error"] as? [String: Any])?["message"] as? String ?? ""
+            print("⚠️ API \(status): \(apiMessage)")
+            switch status {
+            case 400 where apiMessage.lowercased().contains("credit"):
+                throw FoodAssistantError.billing
+            case 400: throw FoodAssistantError.badRequest(apiMessage)
+            case 401: throw FoodAssistantError.invalidKey
+            case 402: throw FoodAssistantError.billing
+            case 403: throw FoodAssistantError.permission(apiMessage)
+            case 404: throw FoodAssistantError.modelUnavailable
+            case 413: throw FoodAssistantError.tooLarge
+            case 429: throw FoodAssistantError.rateLimited
+            case 500, 529: throw FoodAssistantError.overloaded
+            default: throw FoodAssistantError.server(status)
+            }
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -421,12 +450,12 @@ struct AIRawReplyProposal {
     }
     let name: String
     let meal: String?
-    let time: String?
-    let dayOffset: Int
+    let date: String
+    let time: String
     let items: [Item]
 
     fileprivate init(_ p: AIRawReply.Proposal) {
-        name = p.name; meal = p.meal; time = p.time; dayOffset = p.day_offset
+        name = p.name; meal = p.meal; date = p.date; time = p.time
         items = p.items.map {
             Item(name: $0.name, grams: $0.grams, foodID: $0.food_id, dishID: $0.dish_id,
                  kcal: $0.kcal, protein: $0.protein, carbs: $0.carbs, fat: $0.fat,
@@ -462,14 +491,21 @@ struct AIRawReplyProposal {
         }
         guard !resolved.isEmpty else { return nil }
 
+        // Giorno indicato dal modello, tra gli ultimi 30 giorni e oggi; altrimenti
+        // quello del messaggio.
         let cal = Calendar.current
-        let offset = min(max(dayOffset, -30), 0)
-        let day = cal.startOfDay(for: sentAt).adding(days: offset)
+        let today = cal.startOfDay(for: Date())
+        let day: Date
+        if let d = dateFromKey(date), d <= today, d >= today.adding(days: -30) {
+            day = d
+        } else {
+            day = cal.startOfDay(for: sentAt)
+        }
 
         let mealType: MealType
         if let m = meal, let t = MealType(rawValue: m) {
             mealType = t
-        } else if let t = time, case let (hh, mm)? = Self.parseTime(t) {
+        } else if case let (hh, mm)? = Self.parseTime(time) {
             mealType = MealType.forTime(hour: hh, minute: mm)
         } else {
             let c = cal.dateComponents([.hour, .minute], from: sentAt)
@@ -498,6 +534,14 @@ final class FoodAssistantSession: ObservableObject {
     @Published var messages: [AIChatMessage] = []
     @Published var isSending = false
 
+    /// Il database come l'ha visto il modello all'inizio della conversazione.
+    /// Resta lo stesso fino a "Nuova conversazione": cambiare le istruzioni di
+    /// sistema a metà invaliderebbe la cronologia (errore 400), e gli id F/D
+    /// devono indicare sempre gli stessi alimenti.
+    private var catalog: AIFoodCatalog?
+    /// Esito delle proposte già comunicato al modello.
+    private var reportedStates: [UUID: AIFoodProposal.State] = [:]
+
     func send(text: String, image: UIImage?, context: ModelContext) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isSending, !trimmed.isEmpty || image != nil else { return }
@@ -509,11 +553,13 @@ final class FoodAssistantSession: ObservableObject {
         }
 
         let now = Date()
-        let userContent = FoodAssistantClient.userContent(text: trimmed, image: image, now: now)
+        let userContent = FoodAssistantClient.userContent(text: trimmed, image: image, now: now,
+                                                          notes: pendingNotes())
         messages.append(AIChatMessage(role: .user, text: trimmed, image: image, apiUserContent: userContent))
         isSending = true
 
-        let catalog = AIFoodCatalog.load(context: context)
+        let catalog = self.catalog ?? AIFoodCatalog.load(context: context)
+        self.catalog = catalog
         let history = apiHistory()
 
         Task { @MainActor in
@@ -521,6 +567,13 @@ final class FoodAssistantSession: ObservableObject {
             do {
                 let result = try await FoodAssistantClient.send(messages: history, catalog: catalog, apiKey: key)
                 let proposal = result.proposal?.resolve(catalog: catalog, sentAt: now)
+                // Una proposta nuova sostituisce quelle ancora da confermare: dopo
+                // una correzione non si deve poter aggiungere anche la vecchia.
+                if proposal != nil {
+                    for i in messages.indices where messages[i].proposal?.state == .pending {
+                        messages[i].proposal?.state = .superseded
+                    }
+                }
                 messages.append(AIChatMessage(role: .assistant, text: result.reply,
                                               proposal: proposal, apiContent: result.content))
             } catch {
@@ -543,6 +596,27 @@ final class FoodAssistantSession: ObservableObject {
     func clear() {
         guard !isSending else { return }
         messages.removeAll()
+        catalog = nil
+        reportedStates.removeAll()
+    }
+
+    /// Esiti delle proposte (aggiunta, rifiutata) non ancora comunicati al
+    /// modello: vanno nel prossimo messaggio, così non ripropone cibi già nel diario.
+    private func pendingNotes() -> [String] {
+        var notes: [String] = []
+        for m in messages {
+            guard let p = m.proposal, reportedStates[m.id] != p.state else { continue }
+            switch p.state {
+            case .accepted:
+                notes.append("la proposta \"\(p.name)\" è stata aggiunta al diario (\(p.meal.rawValue.lowercased())).")
+            case .declined:
+                notes.append("la proposta \"\(p.name)\" è stata rifiutata e non è nel diario.")
+            case .pending, .superseded:
+                continue
+            }
+            reportedStates[m.id] = p.state
+        }
+        return notes
     }
 
     /// Cronologia per l'API: solo i turni andati a buon fine, alternati utente
