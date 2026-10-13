@@ -70,16 +70,15 @@ struct ResultsView: View {
             let steps    = log?.steps ?? 0
             let gym      = log?.gymColor ?? .rest
 
+            // Solo i giorni conclusi con il cibo registrato, per ogni dato della pagina:
+            // oggi è ancora in corso (il basale conta già tutta la giornata, i pasti no)
+            // e un giorno senza pasti registrati è un giorno non tracciato.
+            guard date < today, eaten > 0 else { continue }
+
             s.totalSteps += steps
             if steps > 0 { s.daysWithSteps += 1 }
             if gym != .rest { s.gymDays += 1 }
 
-            // Calorie e deficit solo sui giorni conclusi: oggi il basale conta già
-            // tutta la giornata, i pasti non ancora.
-            guard date < today else { continue }
-
-            // I giorni senza cibo registrato restano fuori da tutti i calcoli sulle calorie.
-            guard eaten > 0 else { continue }
             s.totalKcalEaten += eaten; daysWithKcal += 1
 
             // Senza basale (profilo incompleto) il giorno non entra nel deficit:
