@@ -30,6 +30,20 @@ enum MealType: String, Codable, CaseIterable {
         case .snack:     return "carrot.fill"
         }
     }
+
+    /// Pasto dedotto dall'ora, quando non è indicato: 8–12 colazione, 12–15 pranzo,
+    /// 15–19 snack, 19–21 cena, 21–8 snack. Ogni fascia include l'ora d'inizio
+    /// ed esclude quella di fine (le 12:00 sono già pranzo).
+    static func forTime(hour: Int, minute: Int = 0) -> MealType {
+        let minutes = ((hour % 24 + 24) % 24) * 60 + minute
+        switch minutes {
+        case 480..<720:   return .breakfast   // 8:00–11:59
+        case 720..<900:   return .lunch       // 12:00–14:59
+        case 900..<1140:  return .snack       // 15:00–18:59
+        case 1140..<1260: return .dinner      // 19:00–20:59
+        default:          return .snack       // 21:00–7:59
+        }
+    }
 }
 
 // MARK: - Formattazione

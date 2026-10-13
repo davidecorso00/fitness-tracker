@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>NSCameraUsageDescription</key>
-    <string>La fotocamera serve a scansionare i codici a barre dei prodotti alimentari.</string>
+    <string>La fotocamera serve a scansionare i codici a barre dei prodotti alimentari e a fotografare i pasti per l'assistente AI.</string>
     <key>NSHealthShareUsageDescription</key>
     <string>FitnessApp legge i tuoi passi e le calorie attive bruciate per mostrare i progressi giornalieri.</string>
     <key>NSHealthUpdateUsageDescription</key>

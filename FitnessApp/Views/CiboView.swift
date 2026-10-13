@@ -27,6 +27,14 @@ struct CiboView: View {
     }
 
     var body: some View {
+        content
+            // Dall'assistente AI si arriva sempre sul diario.
+            .onChange(of: appState.pendingQuickAdd?.id) { _, id in
+                if id != nil { selectedTab = 0 }
+            }
+    }
+
+    private var content: some View {
         ZStack { Color.bg.ignoresSafeArea() }
         .overlay(
             VStack(spacing: 0) {

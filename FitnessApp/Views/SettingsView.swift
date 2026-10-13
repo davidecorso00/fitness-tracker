@@ -178,6 +178,8 @@ struct SettingsView: View {
 
                             TabBarSettingsCard()
 
+                            AIKeySettingsCard()
+
                             PausaVisibilityCard()
 
                             SoftModeCard()

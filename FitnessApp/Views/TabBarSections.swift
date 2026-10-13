@@ -7,7 +7,7 @@ import SwiftUI
 // e ogni sezione resta raggiungibile.
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case sommario, cibo, farmacia, palestra, cardio, grafici, predizioni, risultati
+    case sommario, cibo, farmacia, palestra, cardio, grafici, predizioni, risultati, ai
 
     /// Pulsanti scelti dall'utente; il quinto è sempre "Altro".
     static let barSlots = 4
@@ -26,6 +26,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .grafici:    return "Grafici"
         case .predizioni: return "Predizioni"
         case .risultati:  return "Risultati"
+        case .ai:         return "AI"
         }
     }
 
@@ -39,6 +40,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .grafici:    return "chart.xyaxis.line"
         case .predizioni: return "chart.line.uptrend.xyaxis"
         case .risultati:  return "trophy.fill"
+        case .ai:         return "sparkles"
         }
     }
 
@@ -53,6 +55,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .predizioni: return 5
         case .risultati:  return 6
         case .cardio:     return 7
+        case .ai:         return 8
         }
     }
 
@@ -67,6 +70,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .grafici:    ChartsView(showSettings: showSettings)
         case .predizioni: PredictionsView(showSettings: showSettings)
         case .risultati:  ResultsView(showSettings: showSettings)
+        case .ai:         AIAssistantView(showSettings: showSettings)
         }
     }
 }

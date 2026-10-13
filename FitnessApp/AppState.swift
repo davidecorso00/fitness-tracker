@@ -118,6 +118,10 @@ final class AppState: ObservableObject {
     @Published var currentDate: Date = Calendar.current.startOfDay(for: Date())
     @Published var activeWorkoutSession: ActiveWorkoutSession? = nil
     @Published var showWorkoutSheet: Bool = false
+    /// Inserimento al volo da aprire nel diario, compilato dall'assistente AI.
+    @Published var pendingQuickAdd: QuickAddPrefill? = nil
+    /// Chiamato quando quell'inserimento viene salvato.
+    var onPendingQuickAddSaved: (() -> Void)? = nil
 
     let healthKit = HealthKitManager.shared
 

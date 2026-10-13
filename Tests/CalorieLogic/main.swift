@@ -155,6 +155,21 @@ let vuoto = mealRegularity(entriesByDay: [:], days: giorni, now: t0, lastMealDat
 check("senza dati nessun giorno regolare", vuoto.regularDays == 0)
 check("senza pasti non c'è un ultimo pasto", vuoto.hoursSinceLastMeal == nil)
 
+// ── Pasto dedotto dall'ora ────────────────────────────────────────────────────
+
+print("\nPasto dall'ora (assistente AI)")
+
+check("7:59 è snack", MealType.forTime(hour: 7, minute: 59) == .snack)
+check("8:00 è colazione", MealType.forTime(hour: 8) == .breakfast)
+check("11:59 è colazione", MealType.forTime(hour: 11, minute: 59) == .breakfast)
+check("12:00 è pranzo", MealType.forTime(hour: 12) == .lunch)
+check("14:59 è pranzo", MealType.forTime(hour: 14, minute: 59) == .lunch)
+check("15:00 è snack", MealType.forTime(hour: 15) == .snack)
+check("19:00 è cena", MealType.forTime(hour: 19) == .dinner)
+check("20:59 è cena", MealType.forTime(hour: 20, minute: 59) == .dinner)
+check("21:00 è snack", MealType.forTime(hour: 21) == .snack)
+check("mezzanotte è snack", MealType.forTime(hour: 0) == .snack)
+
 print("")
 if failures == 0 { print("TUTTI I CONTROLLI SUPERATI") }
 else { print("\(failures) CONTROLLI FALLITI"); exit(1) }

@@ -6,6 +6,8 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var appState = AppState()
+    /// La chat dell'assistente AI: vive qui per non perderla cambiando sezione.
+    @StateObject private var assistant = FoodAssistantSession()
     @State private var selectedTab: Int
     @State private var showSettings = false
     @State private var preservedStorePath: String?
@@ -38,6 +40,21 @@ struct RootView: View {
     var body: some View {
         tabView
         .environmentObject(appState)
+        .environmentObject(assistant)
+        // Conferma dall'assistente: si va al diario del giorno giusto e si apre
+        // l'inserimento al volo già compilato.
+        .onChange(of: appState.pendingQuickAdd?.id) { _, id in
+            guard id != nil, let prefill = appState.pendingQuickAdd else { return }
+            appState.currentDate = Calendar.current.startOfDay(for: prefill.date)
+            open(.cibo)
+        }
+        .sheet(item: Binding(
+            get: { appState.pendingQuickAdd },
+            set: { appState.pendingQuickAdd = $0 }
+        )) { prefill in
+            QuickAddSheet(meal: prefill.meal, date: prefill.date, prefill: prefill,
+                          onSaved: appState.onPendingQuickAddSaved)
+        }
         // Lo spazio "Un attimo" si apre sopra tutto, mai dentro la navigazione
         // del diario: il tracker non deve restare visibile nemmeno di sbieco.
         .fullScreenCover(isPresented: $mostraPausa) {

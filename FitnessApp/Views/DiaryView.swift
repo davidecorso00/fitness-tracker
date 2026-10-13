@@ -719,22 +719,55 @@ struct AddFoodSheet: View {
 struct QuickAddSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Query private var allFoods: [FoodItem]
 
     let meal: MealType
     let date: Date
+    /// Compilato dall'assistente AI: i valori si possono controllare e correggere.
+    let fromAssistant: Bool
+    /// Chiamato dopo il salvataggio (l'assistente segna la proposta come aggiunta).
+    var onSaved: (() -> Void)? = nil
 
-    @State private var name = ""
-    @State private var kcal = ""
-    @State private var protein = ""
-    @State private var carbs = ""
-    @State private var fat = ""
-    @State private var fiber = ""
-    @State private var sugar = ""
-    @State private var saturatedFat = ""
-    @State private var salt = ""
-    @State private var grams = "100"
+    @State private var name: String
+    @State private var kcal: String
+    @State private var protein: String
+    @State private var carbs: String
+    @State private var fat: String
+    @State private var fiber: String
+    @State private var sugar: String
+    @State private var saturatedFat: String
+    @State private var salt: String
+    @State private var grams: String
+    @State private var saveToDatabase = false
+
+    init(meal: MealType, date: Date, prefill: QuickAddPrefill? = nil, onSaved: (() -> Void)? = nil) {
+        self.meal = prefill?.meal ?? meal
+        self.date = prefill?.date ?? date
+        self.fromAssistant = prefill != nil
+        self.onSaved = onSaved
+        func text(_ v: Double?) -> String { v.map { $0.smartFormat } ?? "" }
+        _name         = State(initialValue: prefill?.name ?? "")
+        _kcal         = State(initialValue: text(prefill?.kcal))
+        _protein      = State(initialValue: text(prefill?.protein))
+        _carbs        = State(initialValue: text(prefill?.carbs))
+        _fat          = State(initialValue: text(prefill?.fat))
+        _fiber        = State(initialValue: text(prefill?.fiber))
+        _sugar        = State(initialValue: text(prefill?.sugar))
+        _saturatedFat = State(initialValue: text(prefill?.saturatedFat))
+        _salt         = State(initialValue: text(prefill?.salt))
+        _grams        = State(initialValue: prefill.map { $0.grams > 0 ? $0.grams.smartFormat : "100" } ?? "100")
+    }
 
     var isValid: Bool { !name.isEmpty && Double(kcal.replacingOccurrences(of: ",", with: ".")) != nil }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Un alimento con lo stesso nome c'è già: niente doppioni nel database.
+    private var alreadyInDatabase: Bool {
+        !trimmedName.isEmpty && allFoods.contains {
+            $0.name.compare(trimmedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
 
     private func parse(_ s: String) -> Double {
         Double(s.replacingOccurrences(of: ",", with: ".")) ?? 0
@@ -746,11 +779,39 @@ struct QuickAddSheet: View {
             .overlay(
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 14) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 14)).foregroundColor(.gymOrange)
-                            Text("Questo alimento verrà aggiunto solo al diario di oggi, non al database.")
-                                .font(.system(size: 13)).foregroundColor(.muted)
+                        if fromAssistant {
+                            HStack(spacing: 10) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 14)).foregroundColor(.acc)
+                                Text("Compilato dall'assistente per \(meal.rawValue.lowercased()), \(date.fullDisplay.lowercased()). Controlla i valori e correggi se serve.")
+                                    .font(.system(size: 13)).foregroundColor(.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .background(Color.acc.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+
+                        // Salvataggio anche nel database, per ritrovarlo la prossima volta.
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 14)).foregroundColor(.gymOrange)
+                                Text(alreadyInDatabase
+                                     ? "Nel database c'è già un alimento con questo nome: viene aggiunto solo al diario."
+                                     : saveToDatabase
+                                        ? "Verrà aggiunto al diario e salvato anche nel database."
+                                        : "Verrà aggiunto solo al diario, non al database.")
+                                    .font(.system(size: 13)).foregroundColor(.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if !alreadyInDatabase {
+                                Toggle(isOn: $saveToDatabase) {
+                                    Text("Salva anche nel database")
+                                        .font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
+                                }
+                                .tint(.gymOrange)
+                            }
                         }
                         .padding(14)
                         .background(Color.gymOrange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -828,6 +889,14 @@ struct QuickAddSheet: View {
         )
 
         let entry = FoodEntry(food: tempFood, grams: g, meal: meal, date: date)
-        context.insert(entry); try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss()
+        context.insert(entry)
+        // Lo stesso alimento, con i valori per 100 g, entra anche nel database.
+        if saveToDatabase && !alreadyInDatabase {
+            tempFood.name = trimmedName
+            context.insert(tempFood)
+        }
+        try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success)
+        onSaved?()
+        dismiss()
     }
 }
