@@ -120,8 +120,7 @@ struct AIAssistantView: View {
                     }
                     if let food = message.newFood {
                         AINewFoodCard(food: food,
-                                      alreadyInDatabase: FoodAssistantSession.existingFood(named: food.name,
-                                                                                           context: context) != nil,
+                                      alreadyInDatabase: food.alreadyInDatabase,
                                       onSave: { assistant.saveNewFood(messageID: message.id, context: context) },
                                       onDecline: { assistant.declineNewFood(messageID: message.id) })
                     }

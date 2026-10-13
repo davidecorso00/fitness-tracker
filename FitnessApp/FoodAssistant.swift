@@ -138,6 +138,9 @@ struct AINewFood: Equatable {
     var portionName: String?
     var portionGrams: Double?
     var state: State = .pending
+    /// C'è già un alimento con questo nome: il pulsante lo aggiorna. Calcolato
+    /// una volta all'arrivo della risposta, non a ogni ridisegno della chat.
+    var alreadyInDatabase = false
 }
 
 // MARK: - Messaggi della chat
@@ -283,6 +286,14 @@ struct AIFoodCatalog {
 }
 
 // MARK: - Client API
+
+/// Risposta arrivata (e quindi fatturata) ma inutilizzabile: rifiuto, troncata o
+/// illeggibile. Porta il costo, così entra nei totali della chat e del mese.
+struct AIBilledError: LocalizedError {
+    let underlying: FoodAssistantError
+    let cost: Double?
+    var errorDescription: String? { underlying.errorDescription }
+}
 
 enum FoodAssistantError: LocalizedError {
     case missingKey, invalidKey, rateLimited, overloaded, network, refused, truncated
@@ -564,13 +575,13 @@ enum FoodAssistantClient {
               let content = json["content"] as? [[String: Any]] else { throw FoodAssistantError.unreadable }
         let cost = (json["usage"] as? [String: Any]).flatMap(AICost.dollars)
         switch json["stop_reason"] as? String {
-        case "refusal":    throw FoodAssistantError.refused
-        case "max_tokens": throw FoodAssistantError.truncated
+        case "refusal":    throw AIBilledError(underlying: .refused, cost: cost)
+        case "max_tokens": throw AIBilledError(underlying: .truncated, cost: cost)
         default: break
         }
         let text = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined()
         guard let raw = try? JSONDecoder().decode(AIRawReply.self, from: Data(text.utf8)) else {
-            throw FoodAssistantError.unreadable
+            throw AIBilledError(underlying: .unreadable, cost: cost)
         }
         return (content, raw.reply, raw.proposal.map(AIRawReplyProposal.init), raw.new_food.map { AINewFood($0) }, cost)
     }
@@ -743,6 +754,10 @@ final class FoodAssistantSession: ObservableObject {
                         switch old.state {
                         case .pending:
                             messages[i].proposal?.state = .superseded
+                            // Correzione di una correzione non ancora confermata:
+                            // resta legata alla stessa voce del diario.
+                            proposal?.replacingEntryID = old.replacingEntryID
+                            proposal?.correctsNumber = old.correctsNumber
                         case .accepted:
                             if let entryID = old.savedEntryID {
                                 proposal?.replacingEntryID = entryID
@@ -752,10 +767,23 @@ final class FoodAssistantSession: ObservableObject {
                             break
                         }
                     }
+                    // Una sola correzione aperta per voce: le altre non si possono più
+                    // confermare, altrimenti aggiungerebbero un doppione.
+                    if let target = proposal?.replacingEntryID {
+                        for j in messages.indices
+                        where messages[j].proposal?.state == .pending
+                            && messages[j].proposal?.replacingEntryID == target {
+                            messages[j].proposal?.state = .superseded
+                        }
+                    }
+                }
+                var newFood = result.newFood
+                if let name = newFood?.name, !name.isEmpty {
+                    newFood?.alreadyInDatabase = Self.existingFood(named: name, context: context) != nil
                 }
                 messages.append(AIChatMessage(role: .assistant, text: result.reply,
                                               proposal: proposal, apiContent: result.content,
-                                              costUSD: result.cost, newFood: result.newFood))
+                                              costUSD: result.cost, newFood: newFood))
             } catch {
                 // Il messaggio dell'utente resta a schermo ma esce dalla cronologia
                 // mandata all'API: due messaggi utente di fila non sono validi.
@@ -763,7 +791,9 @@ final class FoodAssistantSession: ObservableObject {
                     messages[i].apiUserContent = nil
                 }
                 let text = (error as? LocalizedError)?.errorDescription ?? "Qualcosa è andato storto. Riprova."
-                messages.append(AIChatMessage(role: .assistant, text: text, isError: true))
+                let cost = (error as? AIBilledError)?.cost
+                if let cost { AICost.addToMonth(cost) }
+                messages.append(AIChatMessage(role: .assistant, text: text, isError: true, costUSD: cost))
             }
         }
     }
@@ -779,10 +809,17 @@ final class FoodAssistantSession: ObservableObject {
         guard let i = messages.firstIndex(where: { $0.id == messageID }) else { return }
         messages[i].proposal?.state = .accepted
         messages[i].proposal?.savedEntryID = entryID
-        if let replaced = messages[i].proposal?.replacingEntryID,
-           let j = messages.firstIndex(where: { $0.proposal?.savedEntryID == replaced }), j != i {
-            messages[j].proposal?.state = .superseded
-            messages[j].proposal?.savedEntryID = nil
+        if let replaced = messages[i].proposal?.replacingEntryID {
+            if let j = messages.firstIndex(where: { $0.proposal?.savedEntryID == replaced }), j != i {
+                messages[j].proposal?.state = .superseded
+                messages[j].proposal?.savedEntryID = nil
+            }
+            // Altre correzioni della stessa voce, ormai sostituita.
+            for j in messages.indices
+            where j != i && messages[j].proposal?.state == .pending
+                && messages[j].proposal?.replacingEntryID == replaced {
+                messages[j].proposal?.state = .superseded
+            }
         }
     }
 
