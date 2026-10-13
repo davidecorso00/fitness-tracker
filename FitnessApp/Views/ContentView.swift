@@ -5,10 +5,34 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var appState = AppState()
-    @State private var selectedTab = 0
+    @State private var selectedTab: Int
     @State private var showSettings = false
     @State private var preservedStorePath: String?
     @State private var mostraPausa = false
+
+    /// Le 4 sezioni del menu scelte in Impostazioni; le altre sono in "Altro".
+    @AppStorage(TabBarLayout.storageKey) private var menuRaw = TabBarLayout.defaultRaw
+    /// Sezione aperta dentro "Altro" (nil = la lista).
+    @State private var moreOpened: AppSection?
+
+    init() {
+        // Parte dalla prima sezione del menu, che non è per forza il Sommario.
+        let saved = UserDefaults.standard.string(forKey: TabBarLayout.storageKey) ?? ""
+        _selectedTab = State(initialValue: TabBarLayout.sections(from: saved).first?.tag ?? 0)
+    }
+
+    private var barSections: [AppSection] { TabBarLayout.sections(from: menuRaw) }
+    private var moreSections: [AppSection] { AppSection.allCases.filter { !barSections.contains($0) } }
+
+    /// Apre una sezione: dal menu se c'è, altrimenti dentro "Altro".
+    private func open(_ section: AppSection) {
+        if barSections.contains(section) {
+            selectedTab = section.tag
+        } else {
+            moreOpened = section
+            selectedTab = AppSection.moreTag
+        }
+    }
 
     var body: some View {
         tabView
@@ -22,7 +46,14 @@ struct RootView: View {
             mostraPausa = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .pausaVaiAMangiare)) { _ in
-            selectedTab = 1
+            open(.cibo)
+        }
+        // Menu cambiato dalle impostazioni: se la sezione aperta non c'è più,
+        // si torna alla prima; una sezione spostata nel menu esce da "Altro".
+        .onChange(of: menuRaw) { _, _ in
+            if let opened = moreOpened, barSections.contains(opened) { moreOpened = nil }
+            let tags = barSections.map(\.tag) + [AppSection.moreTag]
+            if !tags.contains(selectedTab) { selectedTab = barSections.first?.tag ?? 0 }
         }
         .onAppear {
             appState.seedFoodsIfNeeded(context: context)
@@ -41,11 +72,11 @@ struct RootView: View {
         // Deep link dal widget: dcfitness://sommario, ://cibo, ://acqua
         .onOpenURL { url in
             switch url.host() {
-            case "cibo", "acqua": selectedTab = 1
-            case "palestra":      selectedTab = 3
-            case "cardio":        selectedTab = 7
+            case "cibo", "acqua": open(.cibo)
+            case "palestra":      open(.palestra)
+            case "cardio":        open(.cardio)
             case "pausa":         mostraPausa = true
-            default:              selectedTab = 0
+            default:              open(.sommario)
             }
         }
         .alert("Database ripartito da zero", isPresented: Binding(
@@ -96,31 +127,17 @@ struct RootView: View {
 
     // MARK: - Tab bar
 
+    /// Sempre 5 pulsanti: le 4 sezioni scelte e "Altro" con le rimanenti.
     private var tabView: some View {
         TabView(selection: $selectedTab) {
-            Tab("Sommario", systemImage: "heart.fill", value: 0) {
-                TodayView(showSettings: $showSettings)
+            ForEach(barSections) { section in
+                Tab(section.title, systemImage: section.icon, value: section.tag) {
+                    section.content(showSettings: $showSettings)
+                }
             }
-            Tab("Cibo", systemImage: "fork.knife", value: 1) {
-                CiboView(showSettings: $showSettings)
-            }
-            Tab("Farmacia", systemImage: "cross.case.fill", value: 2) {
-                FarmaciaView(showSettings: $showSettings)
-            }
-            Tab("Palestra", systemImage: "dumbbell.fill", value: 3) {
-                PalestraView(showSettings: $showSettings)
-            }
-            Tab("Cardio", systemImage: "figure.run", value: 7) {
-                RunView(showSettings: $showSettings)
-            }
-            Tab("Grafici", systemImage: "chart.xyaxis.line", value: 4) {
-                ChartsView(showSettings: $showSettings)
-            }
-            Tab("Predizioni", systemImage: "chart.line.uptrend.xyaxis", value: 5) {
-                PredictionsView(showSettings: $showSettings)
-            }
-            Tab("Risultati", systemImage: "trophy.fill", value: 6) {
-                ResultsView(showSettings: $showSettings)
+            Tab("Altro", systemImage: "ellipsis", value: AppSection.moreTag) {
+                MoreSectionsView(sections: moreSections, opened: $moreOpened,
+                                 showSettings: $showSettings)
             }
         }
         .tint(.ringRed)
