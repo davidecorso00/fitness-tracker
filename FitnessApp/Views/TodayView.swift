@@ -239,6 +239,7 @@ struct TodayView: View {
                                     HStack(spacing: 0) {
                                         ForEach(GymColor.allCases, id: \.self) { gc in
                                             GymDot(gymColor: gc, isSelected: (dayLog?.gymColor ?? .rest) == gc) {
+                                                guard gc != (dayLog?.gymColor ?? .rest) else { return }
                                                 let log = appState.dayLog(for: currentKey, context: context)
                                                 log.gymColor = gc
                                                 try? context.save()

@@ -78,6 +78,9 @@ struct AIFoodProposal: Equatable {
     var date: Date
     var items: [AIFoodItem]
     var state: State = .pending
+    /// Numero della proposta nella conversazione (n.1, n.2…): con questo il
+    /// modello dice quale proposta sta correggendo.
+    var number = 0
 
     var grams: Double        { items.reduce(0) { $0 + $1.grams } }
     var kcal: Double         { items.reduce(0) { $0 + $1.kcal } }
@@ -138,12 +141,14 @@ struct AIChatMessage: Identifiable {
 /// restituisce sono gli indici di queste liste.
 struct AIFoodCatalog {
     struct Food {
+        let id: PersistentIdentifier
         let name: String
         let kcal, protein, carbs, fat, fiber, sugar, saturatedFat, salt: Double   // per 100 g
         let portionName: String?
         let portionGrams: Double?
     }
     struct Dish {
+        let id: PersistentIdentifier
         let name: String
         let weight: Double        // peso del piatto intero (g)
         let portions: Double
@@ -156,19 +161,20 @@ struct AIFoodCatalog {
     let foods: [Food]
     let dishes: [Dish]
 
+    /// `limit` nil: tutti gli alimenti (per rileggere i valori attuali, non per il modello).
     @MainActor
-    static func load(context: ModelContext) -> AIFoodCatalog {
+    static func load(context: ModelContext, limit: Int? = AIFoodCatalog.maxFoods) -> AIFoodCatalog {
         let allFoods = (try? context.fetch(FetchDescriptor<FoodItem>(sortBy: [SortDescriptor(\.name)]))) ?? []
         let ordered = allFoods.filter(\.isFavorite) + allFoods.filter { !$0.isFavorite }
-        let foods = ordered.prefix(maxFoods).map {
-            Food(name: $0.name, kcal: $0.kcalPer100g, protein: $0.proteinPer100g,
+        let foods = ordered.prefix(limit ?? ordered.count).map {
+            Food(id: $0.persistentModelID, name: $0.name, kcal: $0.kcalPer100g, protein: $0.proteinPer100g,
                  carbs: $0.carbsPer100g, fat: $0.fatPer100g, fiber: $0.fiberPer100g,
                  sugar: $0.sugarPer100g, saturatedFat: $0.saturatedFatPer100g,
                  salt: $0.saltPer100g, portionName: $0.portionName, portionGrams: $0.portionGrams)
         }
         let allDishes = (try? context.fetch(FetchDescriptor<CustomMeal>(sortBy: [SortDescriptor(\.name)]))) ?? []
         let dishes = allDishes.map {
-            Dish(name: $0.name, weight: $0.effectiveWeight, portions: $0.portions,
+            Dish(id: $0.persistentModelID, name: $0.name, weight: $0.effectiveWeight, portions: $0.portions,
                  kcal: $0.totalKcal, protein: $0.totalProtein, carbs: $0.totalCarbs,
                  fat: $0.totalFat, fiber: $0.totalFiber, sugar: $0.totalSugar,
                  saturatedFat: $0.totalSaturatedFat, salt: $0.totalSalt)
@@ -240,7 +246,7 @@ private struct AIRawReply: Decodable {
         let meal: String?
         let date: String
         let time: String
-        let replaces_previous: Bool
+        let replaces_proposal: Int?
         let items: [Item]
     }
     let reply: String
@@ -281,11 +287,12 @@ enum FoodAssistantClient {
     6. Se non si capisce che cosa ha mangiato (per esempio la foto non è chiara) chiedi in reply \
     e metti proposal a null. Se invece puoi fare una stima ragionevole, proponi e scrivi in reply, \
     in una o due frasi, le ipotesi che hai fatto (quantità, condimenti).
-    7. Se l'utente corregge la tua ultima proposta non ancora confermata ("era più grande", "era \
-    ieri", "senza olio"), rifai la proposta completa aggiornata con replaces_previous true. Se \
-    invece nomina un cibo diverso mentre una proposta è ancora da confermare, proponi solo il cibo \
-    nuovo con replaces_previous false: quella precedente resta valida. Nella prima proposta di una \
-    conversazione replaces_previous è false.
+    7. Le note dell'app numerano le tue proposte (n.1, n.2…) e dicono quali sono ancora da \
+    confermare. Se l'utente corregge una proposta ("era più grande", "era ieri", "senza olio"), \
+    rifai la proposta completa aggiornata e metti il suo numero in replaces_proposal; se nello \
+    stesso messaggio nomina anche un cibo nuovo, includilo nella proposta corretta. Se invece \
+    nomina solo un cibo diverso, proponi solo quello con replaces_proposal null: le altre \
+    proposte restano valide.
     8. Per messaggi che non riguardano il cibo rispondi brevemente in reply con proposal null.
     9. Le note dell'app tra parentesi quadre ti dicono se una tua proposta è stata aggiunta al \
     diario o rifiutata. Una proposta aggiunta è già nel diario: se poi l'utente nomina altro \
@@ -319,10 +326,10 @@ enum FoodAssistantClient {
                 "meal": nullable(["type": "string", "enum": MealType.allCases.map(\.rawValue)]),
                 "date": ["type": "string"],
                 "time": ["type": "string"],
-                "replaces_previous": ["type": "boolean"],
+                "replaces_proposal": nullable(["type": "integer"]),
                 "items": ["type": "array", "items": item],
             ],
-            "required": ["name", "meal", "date", "time", "replaces_previous", "items"],
+            "required": ["name", "meal", "date", "time", "replaces_proposal", "items"],
             "additionalProperties": false,
         ]
         return [
@@ -457,13 +464,13 @@ struct AIRawReplyProposal {
     let meal: String?
     let date: String
     let time: String
-    /// La proposta corregge l'ultima ancora da confermare.
-    let replacesPrevious: Bool
+    /// Numero della proposta che questa corregge, se è una correzione.
+    let replacesProposal: Int?
     let items: [Item]
 
     fileprivate init(_ p: AIRawReply.Proposal) {
         name = p.name; meal = p.meal; date = p.date; time = p.time
-        replacesPrevious = p.replaces_previous
+        replacesProposal = p.replaces_proposal
         items = p.items.map {
             Item(name: $0.name, grams: $0.grams, foodID: $0.food_id, dishID: $0.dish_id,
                  kcal: $0.kcal, protein: $0.protein, carbs: $0.carbs, fat: $0.fat,
@@ -472,26 +479,32 @@ struct AIRawReplyProposal {
     }
 
     /// Valori finali: per gli alimenti e i piatti del database contano i dati
-    /// salvati, non la stima del modello. Gli id si leggono sul catalogo che ha
-    /// visto il modello (`catalog`), i valori su quello di adesso (`live`): se
-    /// nel frattempo un alimento è stato modificato valgono i dati nuovi, se è
-    /// stato eliminato vale la stima del modello. Pasto: quello indicato,
-    /// altrimenti dall'ora del pasto, altrimenti dall'ora del messaggio.
+    /// salvati, non la stima del modello. Gli id F/D si leggono sul catalogo che
+    /// ha visto il modello (`catalog`); i valori si prendono dalla stessa riga
+    /// com'è adesso (`live`), così una modifica nel frattempo conta. Se nel
+    /// frattempo è stata eliminata, valgono i valori della fotografia, come stima.
+    /// Pasto: quello indicato, altrimenti dall'ora del pasto, altrimenti
+    /// dall'ora del messaggio.
     func resolve(catalog: AIFoodCatalog, live: AIFoodCatalog, sentAt: Date) -> AIFoodProposal? {
+        let liveFoods = Dictionary(live.foods.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let liveDishes = Dictionary(live.dishes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let resolved: [AIFoodItem] = items.compactMap { item in
             let grams = max(item.grams, 0)
-            if let id = item.foodID, catalog.foods.indices.contains(id),
-               let f = live.foods.first(where: { $0.name == catalog.foods[id].name }) {
+            if let id = item.foodID, catalog.foods.indices.contains(id) {
+                let snapshot = catalog.foods[id]
+                let f = liveFoods[snapshot.id] ?? snapshot
                 let k = grams / 100
-                return AIFoodItem(name: f.name, grams: grams, source: .database,
+                return AIFoodItem(name: f.name, grams: grams,
+                                  source: liveFoods[snapshot.id] != nil ? .database : .estimate,
                                   kcal: f.kcal * k, protein: f.protein * k, carbs: f.carbs * k,
                                   fat: f.fat * k, fiber: f.fiber * k, sugar: f.sugar * k,
                                   saturatedFat: f.saturatedFat * k, salt: f.salt * k)
             }
             if let id = item.dishID, catalog.dishes.indices.contains(id),
-               let d = live.dishes.first(where: { $0.name == catalog.dishes[id].name }), d.weight > 0 {
+               case let d = liveDishes[catalog.dishes[id].id] ?? catalog.dishes[id], d.weight > 0 {
                 let k = grams / d.weight
-                return AIFoodItem(name: d.name, grams: grams, source: .dish,
+                return AIFoodItem(name: d.name, grams: grams,
+                                  source: liveDishes[catalog.dishes[id].id] != nil ? .dish : .estimate,
                                   kcal: d.kcal * k, protein: d.protein * k, carbs: d.carbs * k,
                                   fat: d.fat * k, fiber: d.fiber * k, sugar: d.sugar * k,
                                   saturatedFat: d.saturatedFat * k, salt: d.salt * k)
@@ -552,6 +565,8 @@ final class FoodAssistantSession: ObservableObject {
     /// sistema a metà invaliderebbe la cronologia (errore 400), e gli id F/D
     /// devono indicare sempre gli stessi alimenti.
     private var catalog: AIFoodCatalog?
+    /// Ultimo numero assegnato a una proposta in questa conversazione.
+    private var lastProposalNumber = 0
     /// Esito delle proposte già comunicato al modello.
     private var reportedStates: [UUID: AIFoodProposal.State] = [:]
 
@@ -582,13 +597,18 @@ final class FoodAssistantSession: ObservableObject {
                 let result = try await FoodAssistantClient.send(messages: history, catalog: catalog, apiKey: key)
                 // Le note sono arrivate al modello solo adesso che la richiesta è riuscita.
                 for (id, state) in reported { reportedStates[id] = state }
-                let live = AIFoodCatalog.load(context: context)
-                let proposal = result.proposal?.resolve(catalog: catalog, live: live, sentAt: now)
-                // Una correzione sostituisce l'ultima proposta ancora da confermare:
-                // non si deve poter aggiungere anche la vecchia. Un cibo diverso no.
-                if proposal != nil, result.proposal?.replacesPrevious == true,
-                   let i = messages.lastIndex(where: { $0.proposal?.state == .pending }) {
-                    messages[i].proposal?.state = .superseded
+                let live = AIFoodCatalog.load(context: context, limit: nil)
+                var proposal = result.proposal?.resolve(catalog: catalog, live: live, sentAt: now)
+                if proposal != nil {
+                    lastProposalNumber += 1
+                    proposal?.number = lastProposalNumber
+                    // Una correzione sostituisce la proposta che corregge, se è ancora
+                    // da confermare: non si deve poter aggiungere anche la vecchia.
+                    if let n = result.proposal?.replacesProposal,
+                       let i = messages.firstIndex(where: { $0.proposal?.number == n }),
+                       messages[i].proposal?.state == .pending {
+                        messages[i].proposal?.state = .superseded
+                    }
                 }
                 messages.append(AIChatMessage(role: .assistant, text: result.reply,
                                               proposal: proposal, apiContent: result.content))
@@ -614,6 +634,7 @@ final class FoodAssistantSession: ObservableObject {
         messages.removeAll()
         catalog = nil
         reportedStates.removeAll()
+        lastProposalNumber = 0
     }
 
     /// Esiti delle proposte (aggiunta, rifiutata) non ancora comunicati al
@@ -627,13 +648,20 @@ final class FoodAssistantSession: ObservableObject {
             guard let p = m.proposal, reportedStates[m.id] != p.state else { continue }
             switch p.state {
             case .accepted:
-                notes.append("la proposta \"\(p.name)\" è stata aggiunta al diario (\(p.meal.rawValue.lowercased())).")
+                notes.append("la proposta n.\(p.number) \"\(p.name)\" è stata aggiunta al diario (\(p.meal.rawValue.lowercased())).")
             case .declined:
-                notes.append("la proposta \"\(p.name)\" è stata rifiutata e non è nel diario.")
+                notes.append("la proposta n.\(p.number) \"\(p.name)\" è stata rifiutata e non è nel diario.")
             case .pending, .superseded:
                 continue
             }
             reported.append((m.id, p.state))
+        }
+        // Ogni volta: quali proposte sono ancora aperte, con il loro numero.
+        let open = messages.compactMap(\.proposal).filter { $0.state == .pending }
+        if !open.isEmpty {
+            notes.append("proposte ancora da confermare: " + open.map {
+                "n.\($0.number) \"\($0.name)\" (\($0.meal.rawValue.lowercased()))"
+            }.joined(separator: ", ") + ".")
         }
         return (notes, reported)
     }
