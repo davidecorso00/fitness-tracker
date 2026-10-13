@@ -364,6 +364,28 @@ enum CardioRecorder {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         return run
     }
+
+    /// Con l'iPhone bloccato (Salva dall'orologio o dalla schermata di blocco)
+    /// HealthKit non si legge, e i campioni del Watch possono arrivare minuti
+    /// dopo: le sessioni recenti senza battito si completano quando l'app torna attiva.
+    static func repairMissingHeartRate(context: ModelContext) async {
+        let since = Date().addingTimeInterval(-7 * 86400)
+        let descriptor = FetchDescriptor<RunSession>(
+            predicate: #Predicate { $0.date > since && $0.avgHeartRate == 0 })
+        guard let runs = try? context.fetch(descriptor), !runs.isEmpty else { return }
+        var changed = false
+        for run in runs {
+            // durationSeconds esclude le pause: piccolo buffer per coprirle
+            let end = run.date.addingTimeInterval(run.durationSeconds + 300)
+            let hr = await HealthKitManager.shared.fetchHeartRateStats(from: run.date, to: end)
+            guard hr.avg > 0, run.avgHeartRate == 0 else { continue }
+            run.avgHeartRate = hr.avg
+            run.maxHeartRate = hr.max
+            run.heartRateData = (try? JSONEncoder().encode(hr.series)) ?? Data()
+            changed = true
+        }
+        if changed { try? context.save() }
+    }
 }
 
 // MARK: - Weekly Goal Card

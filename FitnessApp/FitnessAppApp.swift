@@ -94,6 +94,14 @@ struct FitnessAppApp: App {
         print("📦 Vecchio database spostato in: \(backupDir.path)")
     }
 
+    init() {
+        #if canImport(ActivityKit) && os(iOS)
+        // Pulsanti della Live Activity (schermata di blocco, Dynamic Island,
+        // Apple Watch): devono funzionare anche se l'app si sveglia in background.
+        RunControlHandler.install(context: container.mainContext)
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

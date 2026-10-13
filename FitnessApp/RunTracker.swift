@@ -375,6 +375,8 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
     #if canImport(ActivityKit) && os(iOS)
     private var liveActivity: Activity<RunActivityAttributes>?
     private var lastActivityPush = Date.distantPast
+    /// Per riconoscere i pulsanti toccati sulla card di questa sessione.
+    var liveActivityID: String? { liveActivity?.id }
 
     private var activityState: RunActivityAttributes.ContentState {
         RunActivityAttributes.ContentState(
@@ -413,6 +415,7 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         Task { await activity.end(content, dismissalPolicy: .immediate) }
     }
     #else
+    var liveActivityID: String? { nil }
     private func startLiveActivity() {}
     private func pushLiveActivity(force: Bool = false) {}
     private func endLiveActivity() {}

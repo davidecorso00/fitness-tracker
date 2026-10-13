@@ -78,7 +78,10 @@ struct AIAssistantView: View {
             CameraPicker { image in attached = image }
                 .ignoresSafeArea()
         }
-        .onAppear { hasKey = AIKeyStore.load() != nil }
+        .onAppear {
+            hasKey = AIKeyStore.load() != nil
+            assistant.refreshNewFoodFlags(context: context)
+        }
         .onChange(of: showSettings) { _, isOpen in
             if !isOpen { hasKey = AIKeyStore.load() != nil }
         }

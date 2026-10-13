@@ -829,6 +829,12 @@ final class FoodAssistantSession: ObservableObject {
         guard let i = messages.firstIndex(where: { $0.id == messageID }),
               let food = messages[i].newFood, food.state == .pending, !food.name.isEmpty else { return }
         let existing = Self.existingFood(named: food.name, context: context)
+        // Nel frattempo è comparso un alimento con lo stesso nome: niente
+        // sovrascrittura silenziosa, la scheda mostra l'avviso e "Aggiorna".
+        if existing != nil && !food.alreadyInDatabase {
+            messages[i].newFood?.alreadyInDatabase = true
+            return
+        }
         let item = existing ?? FoodItem(name: food.name, kcalPer100g: 0, proteinPer100g: 0,
                                         carbsPer100g: 0, fatPer100g: 0)
         item.kcalPer100g = food.kcal; item.proteinPer100g = food.protein
@@ -842,6 +848,17 @@ final class FoodAssistantSession: ObservableObject {
         if existing == nil { context.insert(item) }
         try? context.save()
         messages[i].newFood?.state = existing == nil ? .saved : .updated
+        refreshNewFoodFlags(context: context)
+    }
+
+    /// Ricalcola "già nel database" per le schede ancora da salvare: un alimento
+    /// con lo stesso nome può essere stato creato dopo (altra scheda, diario).
+    func refreshNewFoodFlags(context: ModelContext) {
+        for i in messages.indices {
+            guard let food = messages[i].newFood, food.state == .pending, !food.name.isEmpty else { continue }
+            let exists = Self.existingFood(named: food.name, context: context) != nil
+            if exists != food.alreadyInDatabase { messages[i].newFood?.alreadyInDatabase = exists }
+        }
     }
 
     func declineNewFood(messageID: UUID) {

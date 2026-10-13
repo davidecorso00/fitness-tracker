@@ -15,25 +15,32 @@ nonisolated enum RunControlAction: Sendable {
 }
 
 nonisolated enum RunControl {
-    @MainActor static var handler: (@MainActor (RunControlAction) async -> Void)?
+    /// Azione e id della Live Activity su cui è stato toccato il pulsante.
+    @MainActor static var handler: (@MainActor (RunControlAction, String) async -> Void)?
 
-    @MainActor static func dispatch(_ action: RunControlAction) async {
-        await handler?(action)
+    @MainActor static func dispatch(_ action: RunControlAction, activityID: String) async {
+        await handler?(action, activityID)
     }
 }
 
 struct RunPauseIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Metti in pausa"
+    @Parameter(title: "Live Activity") var activityID: String
+    init() {}
+    init(activityID: String) { self.activityID = activityID }
     func perform() async throws -> some IntentResult {
-        await RunControl.dispatch(.pause)
+        await RunControl.dispatch(.pause, activityID: activityID)
         return .result()
     }
 }
 
 struct RunResumeIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Riprendi"
+    @Parameter(title: "Live Activity") var activityID: String
+    init() {}
+    init(activityID: String) { self.activityID = activityID }
     func perform() async throws -> some IntentResult {
-        await RunControl.dispatch(.resume)
+        await RunControl.dispatch(.resume, activityID: activityID)
         return .result()
     }
 }
@@ -42,24 +49,33 @@ struct RunResumeIntent: LiveActivityIntent {
 /// (Salva / Continua), così un tocco per sbaglio non chiude l'allenamento.
 struct RunRequestStopIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Termina"
+    @Parameter(title: "Live Activity") var activityID: String
+    init() {}
+    init(activityID: String) { self.activityID = activityID }
     func perform() async throws -> some IntentResult {
-        await RunControl.dispatch(.requestStop)
+        await RunControl.dispatch(.requestStop, activityID: activityID)
         return .result()
     }
 }
 
 struct RunCancelStopIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Continua"
+    @Parameter(title: "Live Activity") var activityID: String
+    init() {}
+    init(activityID: String) { self.activityID = activityID }
     func perform() async throws -> some IntentResult {
-        await RunControl.dispatch(.cancelStop)
+        await RunControl.dispatch(.cancelStop, activityID: activityID)
         return .result()
     }
 }
 
 struct RunSaveIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Salva"
+    @Parameter(title: "Live Activity") var activityID: String
+    init() {}
+    init(activityID: String) { self.activityID = activityID }
     func perform() async throws -> some IntentResult {
-        await RunControl.dispatch(.save)
+        await RunControl.dispatch(.save, activityID: activityID)
         return .result()
     }
 }

@@ -129,7 +129,7 @@ struct RunLiveActivity: Widget {
                                      label: "KCAL", color: kcalRed)
                     }
                     .padding(.top, 6)
-                    RunControls(state: context.state)
+                    RunControls(state: context.state, activityID: context.activityID)
                         .padding(.top, 6)
                 }
             } compactLeading: {
@@ -181,7 +181,7 @@ private struct RunActivityLockView: View {
     private var watchView: some View {
         VStack(spacing: 6) {
             watchStats
-            RunControls(state: context.state, compact: true)
+            RunControls(state: context.state, activityID: context.activityID, compact: true)
         }
     }
 
@@ -224,7 +224,7 @@ private struct RunActivityLockView: View {
     private var lockScreenView: some View {
         VStack(spacing: 12) {
             lockStats
-            RunControls(state: context.state)
+            RunControls(state: context.state, activityID: context.activityID)
         }
         .padding(16)
     }
@@ -281,29 +281,31 @@ private struct RunActivityLockView: View {
 /// sbaglio al polso non chiude l'allenamento.
 private struct RunControls: View {
     let state: RunActivityAttributes.ContentState
+    /// La card toccata: l'app comanda solo la sessione a cui appartiene.
+    let activityID: String
     /// Orologio: solo icone, per stare nello Smart Stack.
     var compact = false
 
     var body: some View {
         HStack(spacing: 8) {
             if state.stopRequested == true {
-                Button(intent: RunCancelStopIntent()) {
+                Button(intent: RunCancelStopIntent(activityID: activityID)) {
                     label("Continua", icon: "play.fill", color: .white.opacity(0.18), text: .white)
                 }
-                Button(intent: RunSaveIntent()) {
+                Button(intent: RunSaveIntent(activityID: activityID)) {
                     label("Salva", icon: "checkmark", color: paceGreen, text: .black)
                 }
             } else {
                 if state.isPaused {
-                    Button(intent: RunResumeIntent()) {
+                    Button(intent: RunResumeIntent(activityID: activityID)) {
                         label("Riprendi", icon: "play.fill", color: paceGreen, text: .black)
                     }
                 } else {
-                    Button(intent: RunPauseIntent()) {
+                    Button(intent: RunPauseIntent(activityID: activityID)) {
                         label("Pausa", icon: "pause.fill", color: restOrange, text: .black)
                     }
                 }
-                Button(intent: RunRequestStopIntent()) {
+                Button(intent: RunRequestStopIntent(activityID: activityID)) {
                     label("Termina", icon: "stop.fill", color: hrPink, text: .white)
                 }
             }
