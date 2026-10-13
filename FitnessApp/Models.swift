@@ -375,6 +375,15 @@ private extension SportEntry {
 ///
 /// Eccezione: senza energia attiva la base è la stima dai passi, che comprende già i passi
 /// fatti durante una passeggiata. Le passeggiate GPS si aggiungono solo se i passi mancano.
+// PROMEMORIA (doppi conteggi noti, lasciati così di proposito):
+// 1. Le SportEntry di corsa e corda create prima del 2026-08-16 (commit 26bf4c6, quando è
+//    nato `autoTracked`) hanno autoTracked = false: qui contano come sport manuali e si
+//    sommano all'energia attiva del Watch. Riguarda solo quei giorni vecchi. Per sistemarlo
+//    basterebbe una migrazione una tantum che le segna autoTracked = true abbinandole alle
+//    RunSession / JumpRopeSession per giorno, nome e kcal (come deleteTwinSportEntry).
+// 2. Senza energia attiva (niente dati dal Watch) la base è la stima dai passi, che conta
+//    già i passi di una corsa GPS: le kcal della corsa (sport.auto) si aggiungono comunque.
+//    Per le passeggiate GPS è già escluso (autoWalk); per le corse no.
 func activityKcal(log: DayLog?, sport: SportKcal) -> Double {
     let base = Double(log?.burnedKcal ?? 0)
     if (log?.activeCaloriesBurned ?? 0) > 0 { return base + sport.manual }
