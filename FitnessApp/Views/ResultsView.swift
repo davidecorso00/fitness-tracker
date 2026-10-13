@@ -116,6 +116,11 @@ struct ResultsView: View {
                 VStack(spacing: 20) {
                     PageHeader("Risultati", subtitle: startSubtitle, showSettings: $showSettings)
 
+                    ProfileIncompleteBanner(
+                        missing: missingRestingInputs(profile: allProfiles.first,
+                                                      hasWeight: allLogs.contains { $0.weight != nil }),
+                        onOpenSettings: { showSettings = true })
+
                     let s = stats
 
                     ResultSection(title: "Corpo") {

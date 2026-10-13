@@ -120,8 +120,8 @@ final class AppState: ObservableObject {
     @Published var showWorkoutSheet: Bool = false
     /// Inserimento al volo da aprire nel diario, compilato dall'assistente AI.
     @Published var pendingQuickAdd: QuickAddPrefill? = nil
-    /// Chiamato quando quell'inserimento viene salvato.
-    var onPendingQuickAddSaved: (() -> Void)? = nil
+    /// Chiamato quando quell'inserimento viene salvato, con la voce creata.
+    var onPendingQuickAddSaved: ((PersistentIdentifier) -> Void)? = nil
 
     let healthKit = HealthKitManager.shared
 

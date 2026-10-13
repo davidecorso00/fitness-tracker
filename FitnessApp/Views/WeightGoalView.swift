@@ -13,7 +13,7 @@ struct PredictionsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
                     PageHeader("Predizioni", showSettings: $showSettings)
-                    WeightGoalSection()
+                    WeightGoalSection(onOpenSettings: { showSettings = true })
                 }
                 .padding(.bottom, 120)
             }
@@ -32,6 +32,8 @@ struct WeightGoalSection: View {
     @Query private var allLimits: [AppLimits]
 
     @State private var editing: LimitField?
+    /// Apre le impostazioni dall'avviso "profilo incompleto".
+    var onOpenSettings: (() -> Void)? = nil
 
     private var limits: AppLimits? { allLimits.first }
     private var targetWeight: Double { limits?.targetWeight ?? 0 }
@@ -177,6 +179,10 @@ struct WeightGoalSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel(text: "Predizioni").padding(.horizontal, 20)
+            ProfileIncompleteBanner(
+                missing: missingRestingInputs(profile: profile,
+                                              hasWeight: allLogs.contains { $0.weight != nil }),
+                onOpenSettings: onOpenSettings)
             goalSettingsCard
             if targetWeight > 0 {
                 statusCard

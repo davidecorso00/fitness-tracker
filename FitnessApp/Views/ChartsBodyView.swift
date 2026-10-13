@@ -38,6 +38,10 @@ struct ChartsBodyView: View {
                     PeriodPicker(period: $period)
                         .padding(.top, 10)
 
+                    ProfileIncompleteBanner(
+                        missing: missingRestingInputs(profile: allProfiles.first,
+                                                      hasWeight: allLogs.contains { $0.weight != nil }))
+
                     weightChart
                     calorieBalanceChart
                     fatLossChart

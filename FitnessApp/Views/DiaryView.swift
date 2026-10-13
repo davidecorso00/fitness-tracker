@@ -728,7 +728,10 @@ struct QuickAddSheet: View {
     /// Alimento o piatto già salvato: niente opzione "salva nel database".
     let fromDatabase: Bool
     /// Chiamato dopo il salvataggio (l'assistente segna la proposta come aggiunta).
-    var onSaved: (() -> Void)? = nil
+    var onSaved: ((PersistentIdentifier) -> Void)? = nil
+    /// Voce già nel diario che questo inserimento sostituisce (correzione
+    /// chiesta all'assistente).
+    let replacingEntryID: PersistentIdentifier?
 
     @State private var name: String
     @State private var kcal: String
@@ -746,12 +749,14 @@ struct QuickAddSheet: View {
     @State private var scaledGrams: Double
     @State private var scaledTexts: [String]
 
-    init(meal: MealType, date: Date, prefill: QuickAddPrefill? = nil, onSaved: (() -> Void)? = nil) {
+    init(meal: MealType, date: Date, prefill: QuickAddPrefill? = nil,
+         onSaved: ((PersistentIdentifier) -> Void)? = nil) {
         self.meal = prefill?.meal ?? meal
         self.date = prefill?.date ?? date
         self.fromAssistant = prefill != nil
         self.fromDatabase = prefill?.fromDatabase ?? false
         self.onSaved = onSaved
+        self.replacingEntryID = prefill?.replacingEntryID
         func text(_ v: Double?) -> String { v.map { $0.smartFormat } ?? "" }
         _name         = State(initialValue: prefill?.name ?? "")
         _kcal         = State(initialValue: text(prefill?.kcal))
@@ -820,7 +825,9 @@ struct QuickAddSheet: View {
                             HStack(spacing: 10) {
                                 Image(systemName: "sparkles")
                                     .font(.system(size: 14)).foregroundColor(.acc)
-                                Text("Compilato dall'assistente per \(meal.rawValue.lowercased()), \(date.fullDisplay.lowercased()). Controlla i valori e correggi se serve.")
+                                Text(replacingEntryID != nil
+                                     ? "Correzione dall'assistente: sostituirà la voce già aggiunta, in \(meal.rawValue.lowercased()), \(date.fullDisplay.lowercased()). Controlla i valori."
+                                     : "Compilato dall'assistente per \(meal.rawValue.lowercased()), \(date.fullDisplay.lowercased()). Controlla i valori e correggi se serve.")
                                     .font(.system(size: 13)).foregroundColor(.muted)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -894,13 +901,14 @@ struct QuickAddSheet: View {
                             }
                         }
 
-                        PillButton(label: "Aggiungi a \(meal.rawValue)", disabled: !isValid) { save() }
+                        PillButton(label: replacingEntryID != nil ? "Aggiorna la voce" : "Aggiungi a \(meal.rawValue)",
+                                   disabled: !isValid) { save() }
                             .padding(.bottom, 40)
                     }
                     .padding(20)
                 }
             )
-            .navigationTitle("Inserimento al volo")
+            .navigationTitle(replacingEntryID != nil ? "Correggi voce" : "Inserimento al volo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -940,12 +948,19 @@ struct QuickAddSheet: View {
         tempFood.name = trimmedName
         let entry = FoodEntry(food: tempFood, grams: g, meal: meal, date: date)
         context.insert(entry)
+        // Correzione di una voce già aggiunta: la vecchia esce dal diario (se nel
+        // frattempo non è già stata eliminata a mano).
+        if let oldID = replacingEntryID {
+            let old = (try? context.fetch(FetchDescriptor<FoodEntry>(
+                predicate: #Predicate { $0.persistentModelID == oldID })))?.first
+            if let old { context.delete(old) }
+        }
         // Lo stesso alimento, con i valori per 100 g, entra anche nel database.
         if saveToDatabase && !alreadyInDatabase && !fromDatabase {
             context.insert(tempFood)
         }
         try? context.save(); UINotificationFeedbackGenerator().notificationOccurred(.success)
-        onSaved?()
+        onSaved?(entry.persistentModelID)
         dismiss()
     }
 }

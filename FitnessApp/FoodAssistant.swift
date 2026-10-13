@@ -82,6 +82,12 @@ struct AIFoodProposal: Equatable {
     /// Numero della proposta nella conversazione (n.1, n.2…): con questo il
     /// modello dice quale proposta sta correggendo.
     var number = 0
+    /// La voce di diario creata quando la proposta è stata aggiunta.
+    var savedEntryID: PersistentIdentifier? = nil
+    /// Correzione di una proposta già aggiunta: la voce da sostituire e il
+    /// numero della proposta corretta.
+    var replacingEntryID: PersistentIdentifier? = nil
+    var correctsNumber: Int? = nil
 
     var grams: Double        { items.reduce(0) { $0 + $1.grams } }
     var kcal: Double         { items.reduce(0) { $0 + $1.kcal } }
@@ -101,7 +107,7 @@ struct AIFoodProposal: Equatable {
         QuickAddPrefill(meal: meal, date: date, name: isSingleSavedItem ? items[0].name : name,
                         grams: grams, kcal: kcal, protein: protein, carbs: carbs, fat: fat,
                         fiber: fiber, sugar: sugar, saturatedFat: saturatedFat, salt: salt,
-                        fromDatabase: isSingleSavedItem)
+                        fromDatabase: isSingleSavedItem, replacingEntryID: replacingEntryID)
     }
 }
 
@@ -116,6 +122,22 @@ struct QuickAddPrefill: Identifiable, Equatable {
     var fiber: Double, sugar: Double, saturatedFat: Double, salt: Double
     /// L'alimento esiste già nel database: niente opzione "salva nel database".
     var fromDatabase: Bool
+    /// Voce di diario da sostituire (correzione di una voce già aggiunta).
+    var replacingEntryID: PersistentIdentifier? = nil
+}
+
+// MARK: - Nuovo alimento da etichetta
+
+/// Un prodotto letto dalla foto di un'etichetta nutrizionale, da salvare nel
+/// database con i valori per 100 g.
+struct AINewFood: Equatable {
+    enum State: Equatable { case pending, saved, updated, declined }
+
+    var name: String
+    var kcal, protein, carbs, fat, fiber, sugar, saturatedFat, salt: Double   // per 100 g
+    var portionName: String?
+    var portionGrams: Double?
+    var state: State = .pending
 }
 
 // MARK: - Messaggi della chat
@@ -134,6 +156,61 @@ struct AIChatMessage: Identifiable {
     var apiContent: Any? = nil
     /// Il contenuto inviato per un messaggio dell'utente (testo, ora, foto).
     var apiUserContent: [[String: Any]]? = nil
+    /// Costo della risposta in dollari, dai token che ha contato l'API.
+    var costUSD: Double? = nil
+    /// Prodotto letto da un'etichetta, da salvare nel database.
+    var newFood: AINewFood? = nil
+}
+
+// MARK: - Costo
+
+/// Costo di una risposta dai token restituiti dall'API, ai prezzi di listino di
+/// Claude Sonnet 5.5 ($ per milione di token). È lo stesso conto della fattura,
+/// salvo arrotondamenti; il dato ufficiale resta quello di console.anthropic.com.
+enum AICost {
+    static let inputPerMillion = 2.0
+    static let outputPerMillion = 10.0
+    static let cacheWritePerMillion = 2.5     // scrittura in cache da 5 minuti
+    static let cacheReadPerMillion = 0.2
+
+    static func dollars(usage: [String: Any]) -> Double? {
+        func tokens(_ key: String) -> Double { (usage[key] as? NSNumber)?.doubleValue ?? 0 }
+        let input = tokens("input_tokens"), output = tokens("output_tokens")
+        let write = tokens("cache_creation_input_tokens"), read = tokens("cache_read_input_tokens")
+        guard input + output + write + read > 0 else { return nil }
+        return (input * inputPerMillion + output * outputPerMillion
+                + write * cacheWritePerMillion + read * cacheReadPerMillion) / 1_000_000
+    }
+
+    // Totale del mese, per le impostazioni.
+    private static let monthKey = "aiCostMonth"
+    private static let totalKey = "aiCostMonthTotal"
+
+    private static var currentMonth: String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM"; f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: Date())
+    }
+
+    static var monthTotal: Double {
+        let d = UserDefaults.standard
+        return d.string(forKey: monthKey) == currentMonth ? d.double(forKey: totalKey) : 0
+    }
+
+    static func addToMonth(_ dollars: Double) {
+        let d = UserDefaults.standard
+        let total = monthTotal + dollars
+        d.set(currentMonth, forKey: monthKey)
+        d.set(total, forKey: totalKey)
+    }
+
+    /// "$0,012": tre decimali, perché i costi sono di pochi centesimi.
+    static func format(_ dollars: Double) -> String {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "it_IT")
+        f.minimumFractionDigits = 3
+        f.maximumFractionDigits = 3
+        return "$" + (f.string(from: NSNumber(value: dollars)) ?? String(format: "%.3f", dollars))
+    }
 }
 
 // MARK: - Catalogo dal database
@@ -250,8 +327,27 @@ private struct AIRawReply: Decodable {
         let replaces_proposal: Int?
         let items: [Item]
     }
+    struct NewFood: Decodable {
+        let name: String
+        let kcal, protein, carbs, fat, fiber, sugar, saturated_fat, salt: Double
+        let portion_name: String?
+        let portion_grams: Double?
+    }
     let reply: String
     let proposal: Proposal?
+    let new_food: NewFood?
+}
+
+extension AINewFood {
+    fileprivate init(_ f: AIRawReply.NewFood) {
+        name = f.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        kcal = max(f.kcal, 0); protein = max(f.protein, 0); carbs = max(f.carbs, 0); fat = max(f.fat, 0)
+        fiber = max(f.fiber, 0); sugar = max(f.sugar, 0)
+        saturatedFat = max(f.saturated_fat, 0); salt = max(f.salt, 0)
+        let portion = f.portion_name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        portionName = (portion?.isEmpty ?? true) ? nil : portion
+        portionGrams = (f.portion_grams ?? 0) > 0 ? f.portion_grams : nil
+    }
 }
 
 enum FoodAssistantClient {
@@ -298,8 +394,17 @@ enum FoodAssistantClient {
     8. Per messaggi che non riguardano il cibo rispondi brevemente in reply con proposal null.
     9. Le note dell'app tra parentesi quadre ti dicono se una tua proposta è stata aggiunta al \
     diario o rifiutata. Una proposta aggiunta è già nel diario: se poi l'utente nomina altro \
-    cibo, proponi solo quello nuovo. Se corregge una proposta già aggiunta, proponi la versione \
-    corretta e scrivi in reply che la voce già aggiunta va modificata o eliminata nel diario.
+    cibo, proponi solo quello nuovo. Se corregge una proposta già aggiunta ("la pasta di pranzo \
+    era 150 g"), proponi la versione corretta completa con il suo numero in replaces_proposal: \
+    l'app permette all'utente di aggiornare la voce nel diario.
+    10. Etichette: se l'utente manda la foto di un'etichetta nutrizionale (la tabella dei valori \
+    di un prodotto), compila new_food con il nome del prodotto (dalla confezione o da quello che \
+    dice l'utente) e i valori per 100 g letti dall'etichetta; se l'etichetta li dà solo per \
+    porzione, convertili a 100 g. Se indica una porzione (per esempio "1 biscotto = 12 g") mettila \
+    in portion_name e portion_grams, altrimenti null. Se dice anche quanto ne ha mangiato, compila \
+    pure proposal con quei valori (food_id null). Senza etichetta new_food è null. Le note dell'app \
+    ti dicono se l'alimento è stato salvato: non è nell'elenco del database qui sotto, quindi per \
+    proporlo usa food_id null e i valori dell'etichetta.
     Scrivi reply in italiano, in modo breve e chiaro, senza elenchi lunghi.
     """
 
@@ -334,13 +439,27 @@ enum FoodAssistantClient {
             "required": ["name", "meal", "date", "time", "replaces_proposal", "items"],
             "additionalProperties": false,
         ]
+        let newFood: [String: Any] = [
+            "type": "object",
+            "properties": [
+                "name": ["type": "string"],
+                "kcal": number, "protein": number, "carbs": number, "fat": number,
+                "fiber": number, "sugar": number, "saturated_fat": number, "salt": number,
+                "portion_name": nullable(["type": "string"]),
+                "portion_grams": nullable(number),
+            ],
+            "required": ["name", "kcal", "protein", "carbs", "fat", "fiber", "sugar",
+                         "saturated_fat", "salt", "portion_name", "portion_grams"],
+            "additionalProperties": false,
+        ]
         return [
             "type": "object",
             "properties": [
                 "reply": ["type": "string"],
                 "proposal": nullable(proposal),
+                "new_food": nullable(newFood),
             ],
-            "required": ["reply", "proposal"],
+            "required": ["reply", "proposal", "new_food"],
             "additionalProperties": false,
         ]
     }()
@@ -383,7 +502,8 @@ enum FoodAssistantClient {
     /// Manda la conversazione e restituisce il blocco `content` grezzo (da
     /// rimandare nei turni successivi) e la risposta decodificata.
     static func send(messages: [[String: Any]], catalog: AIFoodCatalog,
-                     apiKey: String) async throws -> (content: Any, reply: String, proposal: AIRawReplyProposal?) {
+                     apiKey: String) async throws -> (content: Any, reply: String, proposal: AIRawReplyProposal?,
+                                                       newFood: AINewFood?, cost: Double?) {
         var request = URLRequest(url: endpoint, timeoutInterval: 120)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
@@ -442,6 +562,7 @@ enum FoodAssistantClient {
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? [[String: Any]] else { throw FoodAssistantError.unreadable }
+        let cost = (json["usage"] as? [String: Any]).flatMap(AICost.dollars)
         switch json["stop_reason"] as? String {
         case "refusal":    throw FoodAssistantError.refused
         case "max_tokens": throw FoodAssistantError.truncated
@@ -451,7 +572,7 @@ enum FoodAssistantClient {
         guard let raw = try? JSONDecoder().decode(AIRawReply.self, from: Data(text.utf8)) else {
             throw FoodAssistantError.unreadable
         }
-        return (content, raw.reply, raw.proposal.map(AIRawReplyProposal.init))
+        return (content, raw.reply, raw.proposal.map(AIRawReplyProposal.init), raw.new_food.map { AINewFood($0) }, cost)
     }
 }
 
@@ -573,6 +694,11 @@ final class FoodAssistantSession: ObservableObject {
     private var lastProposalNumber = 0
     /// Esito delle proposte già comunicato al modello.
     private var reportedStates: [UUID: AIFoodProposal.State] = [:]
+    /// Esito dei nuovi alimenti da etichetta già comunicato al modello.
+    private var reportedFoods: [UUID: AINewFood.State] = [:]
+
+    /// Costo della conversazione finora (dai token contati dall'API).
+    var conversationCost: Double { messages.compactMap(\.costUSD).reduce(0, +) }
 
     func send(text: String, image: UIImage?, context: ModelContext) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -585,7 +711,7 @@ final class FoodAssistantSession: ObservableObject {
         }
 
         let now = Date()
-        let (notes, reported) = pendingNotes()
+        let (notes, reported, reportedFoodStates) = pendingNotes()
         let userContent = FoodAssistantClient.userContent(text: trimmed, image: image, now: now,
                                                           notes: notes)
         messages.append(AIChatMessage(role: .user, text: trimmed, image: image, apiUserContent: userContent))
@@ -601,21 +727,35 @@ final class FoodAssistantSession: ObservableObject {
                 let result = try await FoodAssistantClient.send(messages: history, catalog: catalog, apiKey: key)
                 // Le note sono arrivate al modello solo adesso che la richiesta è riuscita.
                 for (id, state) in reported { reportedStates[id] = state }
+                for (id, state) in reportedFoodStates { reportedFoods[id] = state }
+                if let cost = result.cost { AICost.addToMonth(cost) }
                 let live = AIFoodCatalog.load(context: context, limit: nil)
                 var proposal = result.proposal?.resolve(catalog: catalog, live: live, sentAt: now)
                 if proposal != nil {
                     lastProposalNumber += 1
                     proposal?.number = lastProposalNumber
-                    // Una correzione sostituisce la proposta che corregge, se è ancora
-                    // da confermare: non si deve poter aggiungere anche la vecchia.
+                    // Una correzione sostituisce la proposta che corregge: se è ancora da
+                    // confermare la vecchia non si può più aggiungere; se era già nel
+                    // diario, la nuova aggiorna quella voce invece di aggiungerne un'altra.
                     if let n = result.proposal?.replacesProposal,
                        let i = messages.firstIndex(where: { $0.proposal?.number == n }),
-                       messages[i].proposal?.state == .pending {
-                        messages[i].proposal?.state = .superseded
+                       let old = messages[i].proposal {
+                        switch old.state {
+                        case .pending:
+                            messages[i].proposal?.state = .superseded
+                        case .accepted:
+                            if let entryID = old.savedEntryID {
+                                proposal?.replacingEntryID = entryID
+                                proposal?.correctsNumber = n
+                            }
+                        case .declined, .superseded:
+                            break
+                        }
                     }
                 }
                 messages.append(AIChatMessage(role: .assistant, text: result.reply,
-                                              proposal: proposal, apiContent: result.content))
+                                              proposal: proposal, apiContent: result.content,
+                                              costUSD: result.cost, newFood: result.newFood))
             } catch {
                 // Il messaggio dell'utente resta a schermo ma esce dalla cronologia
                 // mandata all'API: due messaggi utente di fila non sono validi.
@@ -633,11 +773,59 @@ final class FoodAssistantSession: ObservableObject {
         messages[i].proposal?.state = state
     }
 
+    /// La proposta è stata aggiunta al diario come `entryID`. Se correggeva una
+    /// voce già aggiunta, quella è stata sostituita e la sua proposta esce di scena.
+    func markSaved(messageID: UUID, entryID: PersistentIdentifier) {
+        guard let i = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        messages[i].proposal?.state = .accepted
+        messages[i].proposal?.savedEntryID = entryID
+        if let replaced = messages[i].proposal?.replacingEntryID,
+           let j = messages.firstIndex(where: { $0.proposal?.savedEntryID == replaced }), j != i {
+            messages[j].proposal?.state = .superseded
+            messages[j].proposal?.savedEntryID = nil
+        }
+    }
+
+    /// Salva nel database il prodotto letto dall'etichetta. Se c'è già un alimento
+    /// con lo stesso nome ne aggiorna i valori invece di crearne un doppione.
+    func saveNewFood(messageID: UUID, context: ModelContext) {
+        guard let i = messages.firstIndex(where: { $0.id == messageID }),
+              let food = messages[i].newFood, food.state == .pending, !food.name.isEmpty else { return }
+        let existing = Self.existingFood(named: food.name, context: context)
+        let item = existing ?? FoodItem(name: food.name, kcalPer100g: 0, proteinPer100g: 0,
+                                        carbsPer100g: 0, fatPer100g: 0)
+        item.kcalPer100g = food.kcal; item.proteinPer100g = food.protein
+        item.carbsPer100g = food.carbs; item.fatPer100g = food.fat
+        item.fiberPer100g = food.fiber; item.sugarPer100g = food.sugar
+        item.saturatedFatPer100g = food.saturatedFat; item.saltPer100g = food.salt
+        if let g = food.portionGrams {
+            item.portionGrams = g
+            item.portionName = food.portionName ?? "porzione"
+        }
+        if existing == nil { context.insert(item) }
+        try? context.save()
+        messages[i].newFood?.state = existing == nil ? .saved : .updated
+    }
+
+    func declineNewFood(messageID: UUID) {
+        guard let i = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        messages[i].newFood?.state = .declined
+    }
+
+    /// Alimento del database con lo stesso nome (senza badare a maiuscole e accenti).
+    static func existingFood(named name: String, context: ModelContext) -> FoodItem? {
+        let all = (try? context.fetch(FetchDescriptor<FoodItem>())) ?? []
+        return all.first {
+            $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
+
     func clear() {
         guard !isSending else { return }
         messages.removeAll()
         catalog = nil
         reportedStates.removeAll()
+        reportedFoods.removeAll()
         lastProposalNumber = 0
     }
 
@@ -645,12 +833,26 @@ final class FoodAssistantSession: ObservableObject {
     /// modello: vanno nel prossimo messaggio, così non ripropone cibi già nel diario.
     /// Restituisce anche gli esiti da segnare come comunicati, cosa che si fa solo
     /// se la richiesta va a buon fine.
-    private func pendingNotes() -> (notes: [String], reported: [(UUID, AIFoodProposal.State)]) {
+    private func pendingNotes() -> (notes: [String], reported: [(UUID, AIFoodProposal.State)],
+                                    reportedFoods: [(UUID, AINewFood.State)]) {
         var notes: [String] = []
         var reported: [(UUID, AIFoodProposal.State)] = []
+        var foods: [(UUID, AINewFood.State)] = []
+        for m in messages {
+            guard let f = m.newFood, f.state != .pending, reportedFoods[m.id] != f.state else { continue }
+            switch f.state {
+            case .saved:    notes.append("l'alimento \"\(f.name)\" è stato salvato nel database con i valori dell'etichetta.")
+            case .updated:  notes.append("l'alimento \"\(f.name)\" era già nel database: i suoi valori sono stati aggiornati con quelli dell'etichetta.")
+            case .declined: notes.append("l'alimento \"\(f.name)\" non è stato salvato.")
+            case .pending:  continue
+            }
+            foods.append((m.id, f.state))
+        }
         for m in messages {
             guard let p = m.proposal, reportedStates[m.id] != p.state else { continue }
             switch p.state {
+            case .accepted where p.correctsNumber != nil:
+                notes.append("la proposta n.\(p.number) \"\(p.name)\" è stata salvata nel diario al posto della n.\(p.correctsNumber ?? 0).")
             case .accepted:
                 notes.append("la proposta n.\(p.number) \"\(p.name)\" è stata aggiunta al diario (\(p.meal.rawValue.lowercased())).")
             case .declined:
@@ -667,7 +869,7 @@ final class FoodAssistantSession: ObservableObject {
                 "n.\($0.number) \"\($0.name)\" (\($0.meal.rawValue.lowercased()))"
             }.joined(separator: ", ") + ".")
         }
-        return (notes, reported)
+        return (notes, reported, foods)
     }
 
     /// Cronologia per l'API: solo i turni andati a buon fine, alternati utente

@@ -42,6 +42,10 @@ struct AIAssistantView: View {
                                 introCard
                             } else {
                                 HStack {
+                                    if assistant.conversationCost > 0 {
+                                        Text("Conversazione: \(AICost.format(assistant.conversationCost))")
+                                            .font(.system(size: 11)).foregroundColor(.muted)
+                                    }
                                     Spacer()
                                     Button("Nuova conversazione") { assistant.clear() }
                                         .font(.system(size: 12, weight: .semibold))
@@ -114,10 +118,22 @@ struct AIAssistantView: View {
                             .background(message.isError ? Color.gymOrange.opacity(0.12) : Color.card,
                                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
+                    if let food = message.newFood {
+                        AINewFoodCard(food: food,
+                                      alreadyInDatabase: FoodAssistantSession.existingFood(named: food.name,
+                                                                                           context: context) != nil,
+                                      onSave: { assistant.saveNewFood(messageID: message.id, context: context) },
+                                      onDecline: { assistant.declineNewFood(messageID: message.id) })
+                    }
                     if let proposal = message.proposal {
                         AIProposalCard(proposal: proposal,
                                        onConfirm: { confirm(message) },
                                        onDecline: { assistant.setProposalState(.declined, for: message.id) })
+                    }
+                    if let cost = message.costUSD {
+                        Text("Costo: \(AICost.format(cost))")
+                            .font(.system(size: 10)).foregroundColor(.muted)
+                            .padding(.leading, 4)
                     }
                 }
                 Spacer(minLength: 32)
@@ -138,7 +154,7 @@ struct AIAssistantView: View {
         HTCard {
             VStack(alignment: .leading, spacing: 8) {
                 SectionLabel(text: "Come funziona")
-                Text("Scrivi cosa hai mangiato, per esempio \"una banana non troppo grande a pranzo\", oppure manda una foto del piatto e, se vuoi, dimmi quanto era.")
+                Text("Scrivi cosa hai mangiato, per esempio \"una banana non troppo grande a pranzo\", oppure manda una foto del piatto e, se vuoi, dimmi quanto era. Con la foto dell'etichetta nutrizionale di un prodotto lo salvo tra i tuoi alimenti.")
                     .font(.system(size: 13)).foregroundColor(.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Se non dici il pasto lo deduco dall'ora: 8–12 colazione, 12–15 pranzo, 15–19 snack, 19–21 cena, poi snack. Cerco prima tra i tuoi alimenti e piatti (quelli salvati durante una conversazione li vedo dalla successiva).")
@@ -246,8 +262,8 @@ struct AIAssistantView: View {
         guard let proposal = message.proposal, proposal.state == .pending else { return }
         let id = message.id
         let session = assistant
-        appState.onPendingQuickAddSaved = { [weak session] in
-            session?.setProposalState(.accepted, for: id)
+        appState.onPendingQuickAddSaved = { [weak session] entryID in
+            session?.markSaved(messageID: id, entryID: entryID)
         }
         appState.pendingQuickAdd = proposal.prefill
     }
@@ -305,6 +321,10 @@ struct AIProposalCard: View {
                         .font(.system(size: 12, weight: .medium))
                 }
                 .foregroundColor(.muted)
+                if let n = proposal.correctsNumber {
+                    Text("Corregge la n.\(n), già nel diario")
+                        .font(.system(size: 12, weight: .semibold)).foregroundColor(.gymOrange)
+                }
             }
 
             // Una riga per alimento, con l'origine dei valori.
@@ -342,7 +362,7 @@ struct AIProposalCard: View {
                     }
                     .buttonStyle(.plain)
                     Button(action: onConfirm) {
-                        Text("Conferma")
+                        Text(proposal.correctsNumber != nil ? "Aggiorna" : "Conferma")
                             .font(.system(size: 15, weight: .bold)).foregroundColor(.black)
                             .frame(maxWidth: .infinity).padding(.vertical, 12)
                             .background(Color.acc, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -352,7 +372,9 @@ struct AIProposalCard: View {
             case .accepted:
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").foregroundColor(.gymGreen)
-                    Text("Aggiunta a \(proposal.meal.rawValue.lowercased())")
+                    Text(proposal.correctsNumber != nil
+                         ? "Voce aggiornata nel diario"
+                         : "Aggiunta a \(proposal.meal.rawValue.lowercased())")
                         .font(.system(size: 13, weight: .semibold)).foregroundColor(.gymGreen)
                 }
             case .declined:
@@ -387,6 +409,87 @@ struct AIProposalCard: View {
     private func macro(_ label: String, _ value: Double, _ color: Color, unit: String) -> some View {
         VStack(spacing: 2) {
             Text(unit.isEmpty ? "\(Int(value.rounded()))" : "\(value.smartFormat)\(unit)")
+                .font(.system(size: 16, weight: .bold, design: .rounded)).foregroundColor(color)
+            Text(label).font(.system(size: 10)).foregroundColor(.muted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Nuovo alimento da etichetta
+
+struct AINewFoodCard: View {
+    let food: AINewFood
+    let alreadyInDatabase: Bool
+    let onSave: () -> Void
+    let onDecline: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Image(systemName: "barcode.viewfinder").font(.system(size: 12)).foregroundColor(.gymGreen)
+                    Text("Nuovo alimento").font(.system(size: 11, weight: .bold)).foregroundColor(.gymGreen)
+                }
+                Text(food.name)
+                    .font(.system(size: 16, weight: .bold)).foregroundColor(.txt)
+                Text(food.portionGrams.map { "Valori per 100 g · 1 \(food.portionName ?? "porzione") = \($0.smartFormat) g" }
+                     ?? "Valori per 100 g")
+                    .font(.system(size: 12, weight: .medium)).foregroundColor(.muted)
+            }
+
+            HStack(spacing: 0) {
+                value("Kcal", food.kcal, .ringRed, unit: "")
+                value("Prot.", food.protein, .ringGreen, unit: "g")
+                value("Carb.", food.carbs, .gymBlue, unit: "g")
+                value("Grassi", food.fat, .gymOrange, unit: "g")
+            }
+            Text("Fibre \(food.fiber.smartFormat) g · Zuccheri \(food.sugar.smartFormat) g · Saturi \(food.saturatedFat.smartFormat) g · Sale \(food.salt.smartFormat) g")
+                .font(.system(size: 11)).foregroundColor(.muted)
+
+            switch food.state {
+            case .pending:
+                if alreadyInDatabase {
+                    Text("C'è già un alimento con questo nome: salvando ne aggiorni i valori.")
+                        .font(.system(size: 12)).foregroundColor(.gymOrange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 10) {
+                    Button(action: onDecline) {
+                        Text("Rifiuta")
+                            .font(.system(size: 15, weight: .bold)).foregroundColor(.txt)
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: onSave) {
+                        Text(alreadyInDatabase ? "Aggiorna" : "Salva")
+                            .font(.system(size: 15, weight: .bold)).foregroundColor(.black)
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(Color.gymGreen, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(food.name.isEmpty)
+                }
+            case .saved, .updated:
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill").foregroundColor(.gymGreen)
+                    Text(food.state == .saved ? "Salvato tra i tuoi alimenti" : "Valori aggiornati")
+                        .font(.system(size: 13, weight: .semibold)).foregroundColor(.gymGreen)
+                }
+            case .declined:
+                EmptyView()
+            }
+        }
+        .padding(14)
+        .background(Color.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(Color.gymGreen.opacity(food.state == .pending ? 0.35 : 0), lineWidth: 1))
+    }
+
+    private func value(_ label: String, _ v: Double, _ color: Color, unit: String) -> some View {
+        VStack(spacing: 2) {
+            Text(unit.isEmpty ? "\(Int(v.rounded()))" : "\(v.smartFormat)\(unit)")
                 .font(.system(size: 16, weight: .bold, design: .rounded)).foregroundColor(color)
             Text(label).font(.system(size: 10)).foregroundColor(.muted)
         }
@@ -474,6 +577,15 @@ struct AIKeySettingsCard: View {
                     if saveFailed {
                         Text("Salvataggio non riuscito. Riprova.")
                             .font(.system(size: 12)).foregroundColor(.gymOrange)
+                    }
+                }
+                if AICost.monthTotal > 0 {
+                    HStack {
+                        Text("Speso questo mese (stima dai token)")
+                            .font(.system(size: 13)).foregroundColor(Color(hex: "cccccc"))
+                        Spacer()
+                        Text(AICost.format(AICost.monthTotal))
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced)).foregroundColor(.txt)
                     }
                 }
                 Text("""
