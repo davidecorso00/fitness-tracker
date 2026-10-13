@@ -596,6 +596,17 @@ struct AddSportSheet: View {
             .overlay(
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 14) {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "applewatch.slash")
+                                .font(.system(size: 14)).foregroundColor(.gymOrange)
+                            Text("Solo per le attività fatte senza Apple Watch: quelle con il Watch sono già nelle calorie attive di Salute, e qui verrebbero contate due volte.")
+                                .font(.system(size: 13)).foregroundColor(.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color.gymOrange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
                         Picker("Tipo", selection: $useCustom) {
                             Text("Sport predefiniti").tag(false)
                             Text("Personalizzato").tag(true)

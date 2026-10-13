@@ -367,7 +367,9 @@ private extension SportEntry {
 /// `DayLog.activeCaloriesBurned` è l'energia attiva di Apple Health e copre già tutto il
 /// movimento della giornata, corse e salto della corda inclusi. Le `SportEntry` generate
 /// automaticamente dai tracker interni verrebbero quindi contate due volte: quando i dati
-/// Health ci sono, vengono escluse. Restano invece valide se l'energia attiva non è
+/// Health ci sono, vengono escluse. Gli sport inseriti a mano invece si sommano sempre:
+/// servono per le attività fatte senza Watch (la schermata di inserimento lo dice).
+/// Le voci automatiche restano invece valide se l'energia attiva non è
 /// disponibile (niente Watch, permessi negati), perché in quel caso sono la stima migliore
 /// che abbiamo di quell'attività.
 ///
