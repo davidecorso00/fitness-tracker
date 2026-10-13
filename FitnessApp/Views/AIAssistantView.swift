@@ -291,8 +291,14 @@ struct AIProposalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(proposal.name)
-                    .font(.system(size: 16, weight: .bold)).foregroundColor(.txt)
+                // Il numero è quello con cui l'assistente indica le proposte ("la n.2").
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("n.\(proposal.number)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.muted)
+                    Text(proposal.name)
+                        .font(.system(size: 16, weight: .bold)).foregroundColor(.txt)
+                }
                 HStack(spacing: 5) {
                     Image(systemName: proposal.meal.icon).font(.system(size: 11))
                     Text("\(proposal.meal.rawValue) · \(dayLabel) · \(proposal.grams.smartFormat) g")
