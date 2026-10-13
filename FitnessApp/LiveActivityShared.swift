@@ -20,6 +20,9 @@ struct RunActivityAttributes: ActivityAttributes {
         var kcal: Double
         var bpm: Double?
         var phaseName: String?   // fase corrente nei cicli (es. "Lavoro 2/4")
+        /// "Termina" toccato: la Live Activity mostra Salva / Continua.
+        /// Opzionale per leggere le activity avviate dalla versione precedente.
+        var stopRequested: Bool? = nil
     }
     /// Passeggiata: cambia icona e titolo. Opzionale perché le activity avviate dalla
     /// versione precedente sono codificate senza questo campo.

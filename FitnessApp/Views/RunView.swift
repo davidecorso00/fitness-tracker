@@ -94,10 +94,11 @@ struct RunView: View {
                 }
             }
         )
-        .fullScreenCover(item: $tracker) { tracker in
-            ActiveRunView(tracker: tracker) { save in
-                endRun(save: save)
-            }
+        .fullScreenCover(item: $tracker) { active in
+            ActiveRunView(tracker: active,
+                          onEnd: { save in endRun(save: save) },
+                          // Chiusa dai pulsanti della Live Activity (orologio, schermata di blocco).
+                          onFinishedElsewhere: { if tracker === active { tracker = nil } })
         }
         .sheet(item: $detailRun) { run in
             RunDetailView(run: run, onDelete: { deleteRun(run) })
@@ -301,38 +302,9 @@ struct RunView: View {
 
     private func endRun(save: Bool) {
         guard let t = tracker else { return }
-        t.finish()
-        let shouldSave = save && t.distanceMeters > 10
         tracker = nil   // dismissa il fullScreenCover
-        guard shouldSave else { return }
-
         Task { @MainActor in
-            let hr = await t.finalHeartRateStats()
-            let run = RunSession(date: t.startDate,
-                                 distanceMeters: t.distanceMeters,
-                                 durationSeconds: t.elapsed,
-                                 kcalBurned: t.kcal,
-                                 splitSeconds: t.splitSeconds,
-                                 route: t.route,
-                                 avgHeartRate: hr.avg,
-                                 maxHeartRate: hr.max,
-                                 hrSeries: hr.series,
-                                 isWalk: t.kind == .walk)
-            context.insert(run)
-            // La sessione entra nel sistema attività esistente: le kcal contano nei totali
-            // giornalieri come ogni altro sport. `autoTracked` evita che vengano sommate
-            // due volte quando Apple Health ha già registrato l'energia attiva.
-            context.insert(SportEntry(dayKey: run.dayKey, sportName: t.kind.sportType.rawValue,
-                                      durationMinutes: max(1, Int(t.elapsed / 60)),
-                                      kcalBurned: t.kcal.rounded(),
-                                      autoTracked: true, sourceId: run.stableId))
-            try? context.save()
-
-            HealthExport.send(activity: t.kind.healthActivity,
-                              start: run.date, durationSeconds: run.durationSeconds,
-                              kcal: run.kcalBurned, distanceMeters: run.distanceMeters)
-
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            guard let run = await CardioRecorder.finish(t, save: save, context: context) else { return }
             // Apre il dettaglio dopo che il cover ha finito l'animazione di chiusura
             try? await Task.sleep(for: .seconds(0.6))
             detailRun = run
@@ -346,6 +318,51 @@ struct RunView: View {
         context.delete(run)
         try? context.save()
         detailRun = nil
+    }
+}
+
+// MARK: - Fine e salvataggio
+
+/// Chiude una corsa o passeggiata e, se richiesto, la salva. Sta fuori dalle
+/// viste perché la usano sia l'app sia i pulsanti della Live Activity, che
+/// arrivano anche con l'app in background.
+@MainActor
+enum CardioRecorder {
+    /// Restituisce la sessione salvata; nil se scartata, troppo corta (meno di
+    /// 10 m) o già chiusa (per esempio "Salva" toccato due volte).
+    @discardableResult
+    static func finish(_ t: RunTracker, save: Bool, context: ModelContext) async -> RunSession? {
+        guard t.state != .finished else { return nil }
+        t.finish()
+        guard save, t.distanceMeters > 10 else { return nil }
+
+        let hr = await t.finalHeartRateStats()
+        let run = RunSession(date: t.startDate,
+                             distanceMeters: t.distanceMeters,
+                             durationSeconds: t.elapsed,
+                             kcalBurned: t.kcal,
+                             splitSeconds: t.splitSeconds,
+                             route: t.route,
+                             avgHeartRate: hr.avg,
+                             maxHeartRate: hr.max,
+                             hrSeries: hr.series,
+                             isWalk: t.kind == .walk)
+        context.insert(run)
+        // La sessione entra nel sistema attività esistente: le kcal contano nei totali
+        // giornalieri come ogni altro sport. `autoTracked` evita che vengano sommate
+        // due volte quando Apple Health ha già registrato l'energia attiva.
+        context.insert(SportEntry(dayKey: run.dayKey, sportName: t.kind.sportType.rawValue,
+                                  durationMinutes: max(1, Int(t.elapsed / 60)),
+                                  kcalBurned: t.kcal.rounded(),
+                                  autoTracked: true, sourceId: run.stableId))
+        try? context.save()
+
+        HealthExport.send(activity: t.kind.healthActivity,
+                          start: run.date, durationSeconds: run.durationSeconds,
+                          kcal: run.kcalBurned, distanceMeters: run.distanceMeters)
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        return run
     }
 }
 
@@ -500,6 +517,7 @@ func fittedRegion(for points: [RoutePoint]) -> MKCoordinateRegion? {
 struct ActiveRunView: View {
     @ObservedObject var tracker: RunTracker
     let onEnd: (_ save: Bool) -> Void
+    var onFinishedElsewhere: () -> Void = {}
 
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var showEndDialog = false
@@ -593,6 +611,10 @@ struct ActiveRunView: View {
             .padding(.horizontal, 20).padding(.bottom, 30)
         }
         .background(Color.bg.ignoresSafeArea())
+        // Salvata dalla Live Activity (orologio o schermata di blocco): si chiude.
+        .onChange(of: tracker.state) { _, state in
+            if state == .finished { onFinishedElsewhere() }
+        }
         .confirmationDialog("Terminare la \(tracker.kind.noun)?", isPresented: $showEndDialog, titleVisibility: .visible) {
             Button("Salva \(tracker.kind.noun)") { onEnd(true) }
             Button("Scarta \(tracker.kind.noun)", role: .destructive) { onEnd(false) }

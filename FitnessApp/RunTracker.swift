@@ -73,6 +73,12 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
     @Published var permissionDenied = false
     @Published var currentBPM: Double?    // ultimo campione dal Watch via HealthKit
     @Published var currentPhaseIndex: Int = 0
+    /// "Termina" toccato dalla Live Activity: si aspetta Salva o Continua.
+    @Published var stopRequested = false
+
+    /// La sessione in corso, per i pulsanti della Live Activity (che arrivano
+    /// all'app senza passare dalle viste).
+    private(set) static var current: RunTracker?
 
     let startDate = Date()
     let kind: CardioKind
@@ -146,6 +152,7 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         }
         startUITimer()
         startLiveActivity()
+        RunTracker.current = self
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.healthKit.requestAuthorization()
@@ -170,6 +177,7 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         // e alla ripresa il percorso riparte da un nuovo segmento.
         lastLocation = nil
         currentPaceSecPerKm = nil
+        stopRequested = false
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         pushLiveActivity(force: true)
     }
@@ -180,13 +188,29 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
         pauseStartedAt = nil
         currentSegment += 1
         state = .running
+        stopRequested = false
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        pushLiveActivity(force: true)
+    }
+
+    /// Primo tocco su "Termina" nella Live Activity: compaiono Salva e Continua.
+    func requestStop() {
+        guard state != .finished else { return }
+        stopRequested = true
+        pushLiveActivity(force: true)
+    }
+
+    func cancelStop() {
+        guard stopRequested else { return }
+        stopRequested = false
         pushLiveActivity(force: true)
     }
 
     /// Spegne tutto e congela i dati. Da chiamare una sola volta.
     func finish() {
         guard state != .finished else { return }
+        if RunTracker.current === self { RunTracker.current = nil }
+        stopRequested = false
         if state == .paused, let p = pauseStartedAt {
             pausedTotal += Date().timeIntervalSince(p)
             pauseStartedAt = nil
@@ -361,7 +385,8 @@ final class RunTracker: NSObject, ObservableObject, Identifiable {
             avgPaceSecPerKm: avgPaceSecPerKm,
             kcal: kcal,
             bpm: currentBPM,
-            phaseName: currentPhaseIndex < phases.count ? phases[currentPhaseIndex].name : nil)
+            phaseName: currentPhaseIndex < phases.count ? phases[currentPhaseIndex].name : nil,
+            stopRequested: stopRequested)
     }
 
     private func startLiveActivity() {

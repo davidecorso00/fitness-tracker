@@ -1,5 +1,6 @@
 #if canImport(ActivityKit) && os(iOS)
 import ActivityKit
+import AppIntents
 import WidgetKit
 import SwiftUI
 
@@ -15,6 +16,7 @@ struct RunActivityAttributes: ActivityAttributes {
         var kcal: Double
         var bpm: Double?
         var phaseName: String?
+        var stopRequested: Bool? = nil
     }
     var isWalk: Bool? = nil
 }
@@ -40,6 +42,13 @@ private let hrPink     = Color(red: 255/255, green: 55/255, blue: 95/255)
 private func activityPaceString(_ secPerKm: Double?) -> String {
     guard let p = secPerKm, p.isFinite, p > 0, p < 3600 else { return "—" }
     return String(format: "%d'%02d\"", Int(p) / 60, Int(p) % 60)
+}
+
+/// "850 m" sotto il chilometro, poi "1,23 km".
+private func activityDistanceString(_ meters: Double, decimals: Int = 2) -> String {
+    meters < 1000
+        ? "\(Int(meters)) m"
+        : String(format: "%.\(decimals)f km", meters / 1000)
 }
 
 private func activityDurationString(_ seconds: Double) -> String {
@@ -99,7 +108,7 @@ struct RunLiveActivity: Widget {
                     .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
+                    Text(activityDistanceString(context.state.distanceMeters))
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(context.attributes.accent)
                         .padding(.trailing, 4)
@@ -120,12 +129,14 @@ struct RunLiveActivity: Widget {
                                      label: "KCAL", color: kcalRed)
                     }
                     .padding(.top, 6)
+                    RunControls(state: context.state)
+                        .padding(.top, 6)
                 }
             } compactLeading: {
                 Image(systemName: context.state.isPaused ? "pause.fill" : context.attributes.icon)
                     .foregroundStyle(context.attributes.accent)
             } compactTrailing: {
-                Text(String(format: "%.1f km", context.state.distanceMeters / 1000))
+                Text(activityDistanceString(context.state.distanceMeters, decimals: 1))
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(context.attributes.accent)
@@ -166,8 +177,15 @@ private struct RunActivityLockView: View {
         }
     }
 
-    // Smart Stack del Watch: tempo, km e battiti — i tre dati chiave al polso
+    // Smart Stack del Watch: tempo, distanza e battiti, con Pausa e Termina sotto.
     private var watchView: some View {
+        VStack(spacing: 6) {
+            watchStats
+            RunControls(state: context.state, compact: true)
+        }
+    }
+
+    private var watchStats: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
@@ -182,11 +200,11 @@ private struct RunActivityLockView: View {
                     }
                 }
                 RunChronoText(state: context.state,
-                              font: .system(size: 26, weight: .bold, design: .rounded))
+                              font: .system(size: 22, weight: .bold, design: .rounded))
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 3) {
-                Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
+                Text(activityDistanceString(context.state.distanceMeters))
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .monospacedDigit().foregroundStyle(context.attributes.accent)
                 if let bpm = context.state.bpm {
@@ -204,6 +222,14 @@ private struct RunActivityLockView: View {
     }
 
     private var lockScreenView: some View {
+        VStack(spacing: 12) {
+            lockStats
+            RunControls(state: context.state)
+        }
+        .padding(16)
+    }
+
+    private var lockStats: some View {
         HStack(spacing: 14) {
             Image(systemName: context.state.isPaused ? "pause.fill" : context.attributes.icon)
                 .font(.system(size: 20, weight: .bold))
@@ -220,7 +246,7 @@ private struct RunActivityLockView: View {
                 RunChronoText(state: context.state,
                               font: .system(size: 28, weight: .bold, design: .rounded))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(String(format: "%.2f km", context.state.distanceMeters / 1000))
+                Text(activityDistanceString(context.state.distanceMeters))
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(context.attributes.accent)
             }
@@ -234,7 +260,6 @@ private struct RunActivityLockView: View {
                 metric(value: "\(Int(context.state.kcal))", label: "kcal", color: kcalRed)
             }
         }
-        .padding(16)
     }
 
     private func metric(value: String, label: String, color: Color) -> some View {
@@ -246,6 +271,58 @@ private struct RunActivityLockView: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.4))
         }
+    }
+}
+
+// MARK: - Pulsanti (Pausa / Riprendi / Termina, poi Salva / Continua)
+
+/// Gli intent girano nel processo dell'app (Shared/RunControlIntents.swift).
+/// "Termina" non chiude subito: chiede Salva o Continua, così un tocco per
+/// sbaglio al polso non chiude l'allenamento.
+private struct RunControls: View {
+    let state: RunActivityAttributes.ContentState
+    /// Orologio: solo icone, per stare nello Smart Stack.
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if state.stopRequested == true {
+                Button(intent: RunCancelStopIntent()) {
+                    label("Continua", icon: "play.fill", color: .white.opacity(0.18), text: .white)
+                }
+                Button(intent: RunSaveIntent()) {
+                    label("Salva", icon: "checkmark", color: paceGreen, text: .black)
+                }
+            } else {
+                if state.isPaused {
+                    Button(intent: RunResumeIntent()) {
+                        label("Riprendi", icon: "play.fill", color: paceGreen, text: .black)
+                    }
+                } else {
+                    Button(intent: RunPauseIntent()) {
+                        label("Pausa", icon: "pause.fill", color: restOrange, text: .black)
+                    }
+                }
+                Button(intent: RunRequestStopIntent()) {
+                    label("Termina", icon: "stop.fill", color: hrPink, text: .white)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func label(_ title: String, icon: String, color: Color, text: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: compact ? 13 : 12, weight: .bold))
+            if !compact || state.stopRequested == true {
+                Text(title).font(.system(size: 13, weight: .bold))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+        }
+        .foregroundStyle(text)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, compact ? 6 : 9)
+        .background(color, in: Capsule())
     }
 }
 

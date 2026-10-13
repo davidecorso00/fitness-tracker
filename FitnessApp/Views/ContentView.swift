@@ -81,6 +81,18 @@ struct RootView: View {
             appState.setupInitialTargets(context: context)
             preservedStorePath = StoreRecovery.preservedPath
             if PausaSignal.consuma() { mostraPausa = true }
+            // Pulsanti della Live Activity di corsa e passeggiata (anche dall'orologio).
+            let ctx = context
+            RunControl.handler = { action in
+                guard let t = RunTracker.current else { return }
+                switch action {
+                case .pause:       t.pause()
+                case .resume:      t.resume()
+                case .requestStop: t.requestStop()
+                case .cancelStop:  t.cancelStop()
+                case .save:        await CardioRecorder.finish(t, save: true, context: ctx)
+                }
+            }
             Task { await HealthKitManager.shared.backfillRecentDays(context: context) }
         }
         // Il controllo del Centro di Controllo lascia un segnale nel gruppo
