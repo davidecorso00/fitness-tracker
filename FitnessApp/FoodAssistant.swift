@@ -174,7 +174,7 @@ enum AICost {
     static let inputPerMillion = 2.0
     static let outputPerMillion = 10.0
     static let cacheWritePerMillion = 2.5     // scrittura in cache da 5 minuti
-    static let cacheReadPerMillion = 0.2
+    static let cacheReadPerMillion = 0.1      // su Sonnet 5.5 è 0,05x il prezzo di input
 
     static func dollars(usage: [String: Any]) -> Double? {
         func tokens(_ key: String) -> Double { (usage[key] as? NSNumber)?.doubleValue ?? 0 }
