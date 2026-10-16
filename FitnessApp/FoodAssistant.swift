@@ -416,6 +416,12 @@ enum FoodAssistantClient {
     pure proposal con quei valori (food_id null). Senza etichetta new_food è null. Le note dell'app \
     ti dicono se l'alimento è stato salvato: non è nell'elenco del database qui sotto, quindi per \
     proporlo usa food_id null e i valori dell'etichetta.
+    11. Stime: quando quantità o valori sono una tua stima (da una foto, da descrizioni come "un \
+    piatto" o "un po' di", da condimenti non detti), non stare mai sotto. Tra i valori plausibili \
+    scegli quello leggermente più alto, circa il 10% sopra la stima più probabile; per olio, burro \
+    e salse non dichiarati considera una dose normale, non minima. Meglio eccedere di poco che \
+    sottostimare. Non aumentare invece i numeri esatti: grammi detti o pesati dall'utente, valori \
+    letti da un'etichetta, porzioni definite nel database.
     Scrivi reply in italiano, in modo breve e chiaro, senza elenchi lunghi.
     """
 
