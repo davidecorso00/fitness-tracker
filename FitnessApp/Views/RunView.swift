@@ -375,9 +375,8 @@ enum CardioRecorder {
         guard let runs = try? context.fetch(descriptor), !runs.isEmpty else { return }
         var changed = false
         for run in runs {
-            // durationSeconds esclude le pause: piccolo buffer per coprirle
-            let end = run.date.addingTimeInterval(run.durationSeconds + 300)
-            let hr = await HealthKitManager.shared.fetchHeartRateStats(from: run.date, to: end)
+            let hr = await HealthKitManager.shared.fetchHeartRateStats(from: run.date,
+                                                                       to: run.heartRateWindowEnd)
             guard hr.avg > 0, run.avgHeartRate == 0 else { continue }
             run.avgHeartRate = hr.avg
             run.maxHeartRate = hr.max
@@ -898,9 +897,8 @@ struct RunDetailView: View {
     private func refetchHeartRateIfMissing() {
         guard run.avgHeartRate == 0 else { return }
         Task { @MainActor in
-            // durationSeconds esclude le pause: piccolo buffer per coprirle
-            let end = run.date.addingTimeInterval(run.durationSeconds + 300)
-            let hr = await HealthKitManager.shared.fetchHeartRateStats(from: run.date, to: end)
+            let hr = await HealthKitManager.shared.fetchHeartRateStats(from: run.date,
+                                                                       to: run.heartRateWindowEnd)
             guard hr.avg > 0 else { return }
             run.avgHeartRate = hr.avg
             run.maxHeartRate = hr.max

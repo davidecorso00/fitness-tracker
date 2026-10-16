@@ -234,6 +234,8 @@ struct TodayView: View {
                         // Sport
                         SportSectionView(
                             dateKey: appState.currentDateKey,
+                            healthActiveKcal: dayLog?.activeCaloriesBurned ?? 0,
+                            steps: dayLog?.steps ?? 0,
                             showAddSport: $showAddSport,
                             onChanged: {}
                         )
@@ -499,12 +501,29 @@ struct TripleRingCard: View {
 struct SportSectionView: View {
     @Environment(\.modelContext) private var context
     let dateKey: String
+    /// Energia attiva di Salute e passi del giorno: decidono quali voci contano
+    /// nelle bruciate, con la stessa regola di `activityKcal`.
+    let healthActiveKcal: Double
+    let steps: Int
     @Binding var showAddSport: Bool
     let onChanged: () -> Void
 
     @Query private var allSports: [SportEntry]
     private var sports: [SportEntry] { allSports.filter { $0.dayKey == dateKey } }
-    private var totalSportKcal: Double { sports.reduce(0) { $0 + $1.kcalBurned } }
+    /// Solo le kcal che si aggiungono davvero alle bruciate.
+    private var totalSportKcal: Double {
+        sports.filter { alreadyCounted($0) == nil }.reduce(0) { $0 + $1.kcalBurned }
+    }
+
+    /// Perché una voce tracciata dall'app non si somma (nil = si somma). Corse,
+    /// passeggiate e corda registrate qui sono già nell'energia attiva del Watch;
+    /// senza quella, le passeggiate sono già nella stima dai passi.
+    private func alreadyCounted(_ sport: SportEntry) -> String? {
+        guard sport.autoTracked else { return nil }
+        if healthActiveKcal > 0 { return "già nelle calorie del Watch" }
+        if steps > 0 && sport.sportName == SportType.walking.rawValue { return "già nei passi" }
+        return nil
+    }
 
     var body: some View {
         HTCard {
@@ -527,8 +546,13 @@ struct SportSectionView: View {
                             .background(Color.ringGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(sport.sportName).font(.system(size: 14, weight: .semibold)).foregroundColor(.txt)
-                            Text("\(sport.durationMinutes) min · \(sport.kcalBurned.smartFormat) kcal")
-                                .font(.system(size: 11)).foregroundColor(.muted)
+                            if let note = alreadyCounted(sport) {
+                                Text("\(sport.durationMinutes) min · \(sport.kcalBurned.smartFormat) kcal · \(note)")
+                                    .font(.system(size: 11)).foregroundColor(.muted.opacity(0.7))
+                            } else {
+                                Text("\(sport.durationMinutes) min · \(sport.kcalBurned.smartFormat) kcal")
+                                    .font(.system(size: 11)).foregroundColor(.muted)
+                            }
                         }
                         Spacer()
                         Button {

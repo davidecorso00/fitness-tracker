@@ -750,6 +750,15 @@ struct HRPoint: Codable {
     var hrPoints: [HRPoint] {
         (try? JSONDecoder().decode([HRPoint].self, from: heartRateData)) ?? []
     }
+
+    /// Fine della sessione per cercare il battito in Salute. Senza pause è esatta
+    /// (inizio + tempo attivo); con le pause, che non vengono salvate, si tengono
+    /// 5 minuti di margine. Senza margine inutile i battiti di una camminata col
+    /// Watch subito dopo uno scatto non abbassano la media dello scatto.
+    var heartRateWindowEnd: Date {
+        let hadPauses = routePoints.contains { $0.seg > 0 }
+        return date.addingTimeInterval(durationSeconds + (hadPauses ? 300 : 0))
+    }
 }
 
 // MARK: - Jump Rope Session

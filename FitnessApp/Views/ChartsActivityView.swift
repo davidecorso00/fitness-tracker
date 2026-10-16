@@ -197,7 +197,10 @@ struct ChartsActivityView: View {
         for e in allEntries { foodDays.insert(e.dayKey) }
         for s in allWorkoutSessions { gymDays.insert(s.dayKey) }
         for r in allRunSessions where !r.isWalk { runDays.insert(r.dayKey) }
-        for s in allSports { sportDays.insert(s.dayKey) }
+        // La corsa GPS crea anche una voce sport: è già contata in runDays.
+        for s in allSports where !(s.autoTracked && s.sportName == SportType.running.rawValue) {
+            sportDays.insert(s.dayKey)
+        }
 
         var ld = [String: DayLog]()
         for log in allLogs {
