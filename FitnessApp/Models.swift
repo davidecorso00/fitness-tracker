@@ -755,9 +755,14 @@ struct HRPoint: Codable {
     /// (inizio + tempo attivo); con le pause, che non vengono salvate, si tengono
     /// 5 minuti di margine. Senza margine inutile i battiti di una camminata col
     /// Watch subito dopo uno scatto non abbassano la media dello scatto.
+    /// Una pausa si riconosce dai tratti del percorso; se il percorso finisce più
+    /// di un minuto prima del tempo attivo (dopo la ripresa può non esserci nessun
+    /// punto GPS) il margine resta, per non tagliare l'ultimo tratto.
     var heartRateWindowEnd: Date {
-        let hadPauses = routePoints.contains { $0.seg > 0 }
-        return date.addingTimeInterval(durationSeconds + (hadPauses ? 300 : 0))
+        let points = routePoints
+        let mayHavePaused = points.contains { $0.seg > 0 }
+            || (points.last?.t ?? 0) < durationSeconds - 60
+        return date.addingTimeInterval(durationSeconds + (mayHavePaused ? 300 : 0))
     }
 }
 
