@@ -46,7 +46,8 @@ struct FitnessAppApp: App {
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            return try ModelContainer(for: schema, configurations: config)
+            // Con iCloud, sullo stesso file di prima; senza se non riesce (vedi CloudSync).
+            return try CloudSync.shared.openContainer(schema: schema)
         } catch {
             // L'apertura del database è fallita (tipicamente una migrazione non
             // automatica dopo un cambio di schema). NON cancelliamo nulla: mettiamo
@@ -55,7 +56,7 @@ struct FitnessAppApp: App {
             print("⚠️ ModelContainer fallito: \(error). Metto al sicuro il vecchio database…")
             Self.preserveExistingStore(at: config.url)
             do {
-                return try ModelContainer(for: schema, configurations: config)
+                return try CloudSync.shared.openContainer(schema: schema)
             } catch {
                 fatalError("ModelContainer error dopo il salvataggio del vecchio store: \(error)")
             }

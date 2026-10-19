@@ -92,7 +92,10 @@ import Foundation
 // MARK: - Day Log
 
 @Model final class DayLog {
-    @Attribute(.unique) var dateKey: String = ""
+    // Niente @Attribute(.unique): iCloud non lo supporta. Un giorno si crea sempre
+    // cercando prima la riga con quella data; le copie doppie fra dispositivi le
+    // unisce CloudDedupe.
+    var dateKey: String = ""
     var weight: Double? = nil
     var steps: Int = 0
     var gymColor: GymColor = GymColor.rest

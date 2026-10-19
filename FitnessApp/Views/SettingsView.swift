@@ -186,6 +186,8 @@ struct SettingsView: View {
 
                             AppleHealthCard()
 
+                            CloudSyncCard()
+
                             AutoBackupCard()
 
                             BackupView()

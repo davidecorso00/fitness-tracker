@@ -135,6 +135,8 @@ enum PausaSeed {
 
     @MainActor
     static func popolaSeServe(context: ModelContext) {
+        // Su un dispositivo nuovo con iCloud le frasi e le attività arrivano da lì.
+        guard CloudSync.shared.seedingAllowed else { return }
         if (try? context.fetchCount(FetchDescriptor<PausaFrase>())) == 0 {
             for (i, t) in frasi.enumerated() {
                 context.insert(PausaFrase(testo: t, ordine: i))

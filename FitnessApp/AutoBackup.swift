@@ -12,9 +12,10 @@ import SwiftData
 // iCloud Drive o su un altro dispositivo — ed è per questo che le impostazioni
 // mostrano da quanto tempo non ne fai uno.
 //
-// Non usa CloudKit di proposito: SwiftData con CloudKit non supporta
-// @Attribute(.unique), che qui sta su DayLog.dateKey. Toglierlo significherebbe
-// gestire i duplicati a mano su tutto lo storico.
+// La sincronizzazione fra dispositivi è un'altra cosa (CloudSync.swift): un backup
+// serve comunque, perché una cancellazione per sbaglio si sincronizza anch'essa.
+// (Il vincolo @Attribute(.unique) su DayLog.dateKey è stato tolto per iCloud:
+// i giorni doppi li unisce CloudDedupe.)
 
 @MainActor
 enum AutoBackup {

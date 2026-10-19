@@ -37,6 +37,24 @@ struct RootView: View {
         }
     }
 
+    /// Primo avvio: dati iniziali, copie doppie e recupero da Salute. Su un
+    /// dispositivo vuoto con iCloud aspetta prima i dati dell'iCloud, altrimenti
+    /// creerebbe alimenti, esercizi e obiettivi che esistono già.
+    @MainActor
+    private func startupSetup() async {
+        let hadData = ((try? context.fetchCount(FetchDescriptor<FoodItem>())) ?? 0) > 0
+            || ((try? context.fetchCount(FetchDescriptor<AppLimits>())) ?? 0) > 0
+        await CloudSync.shared.waitUntilSettled(storeHadData: hadData)
+        CloudDedupe.run(context: context)
+        appState.seedFoodsIfNeeded(context: context)
+        appState.seedExercisesIfNeeded(context: context)
+        appState.migrateExercisesIfNeeded(context: context)
+        appState.migrateTemplateExercisesIfNeeded(context: context)
+        appState.setupInitialTargets(context: context)
+        await HealthKitManager.shared.backfillRecentDays(context: context)
+        await CardioRecorder.repairMissingHeartRate(context: context)
+    }
+
     var body: some View {
         tabView
         .environmentObject(appState)
@@ -74,15 +92,15 @@ struct RootView: View {
             if !tags.contains(selectedTab) { selectedTab = barSections.first?.tag ?? 0 }
         }
         .onAppear {
-            appState.seedFoodsIfNeeded(context: context)
-            appState.seedExercisesIfNeeded(context: context)
-            appState.migrateExercisesIfNeeded(context: context)
-            appState.migrateTemplateExercisesIfNeeded(context: context)
-            appState.setupInitialTargets(context: context)
             preservedStorePath = StoreRecovery.preservedPath
             if PausaSignal.consuma() { mostraPausa = true }
-            Task { await HealthKitManager.shared.backfillRecentDays(context: context) }
-            Task { await CardioRecorder.repairMissingHeartRate(context: context) }
+            Task { await startupSetup() }
+        }
+        // Dati arrivati da un altro dispositivo: toglie le copie doppie dello stesso
+        // giorno o delle impostazioni, se due dispositivi le hanno create insieme.
+        .onReceive(NotificationCenter.default.publisher(for: CloudSync.importFinished)
+            .debounce(for: .seconds(3), scheduler: RunLoop.main)) { _ in
+            CloudDedupe.run(context: context)
         }
         // Il controllo del Centro di Controllo lascia un segnale nel gruppo
         // condiviso e apre l'app: qui lo si raccoglie.

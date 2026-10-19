@@ -157,3 +157,25 @@ Dopo export e import viene mostrato il riepilogo di quanti elementi sono passati
 
 Il formato sta in `BackupModels.swift`, separato da SwiftData: i campi aggiunti dopo
 la v5 sono opzionali, quindi i backup vecchi restano leggibili.
+
+
+## iCloud (iPhone, iPad, Mac)
+
+I dati si sincronizzano con SwiftData + CloudKit nel database **privato** dell'utente
+(container `iCloud.davideCorso.FitnessApp`): ogni Apple ID vede solo i propri dati.
+
+- Servono l'Apple Developer Program, e in Xcode (Signing & Capabilities) le capability
+  **iCloud › CloudKit** con il container sopra, **Push Notifications** e
+  **Background Modes › Remote notifications**. Le chiavi sono già in
+  `FitnessApp/FitnessApp.entitlements` e `Info.plist`; se Xcode segnala un errore di
+  firma, aggiungi iCloud › CloudKit dall'interfaccia e scegli il container.
+- Le build installate da Xcode usano l'ambiente CloudKit di **sviluppo**: iPhone, iPad
+  e Mac, tutti installati da Xcode, condividono gli stessi dati. Per TestFlight o App
+  Store lo schema va promosso a produzione dalla CloudKit Console (e i dati di
+  sviluppo non passano in produzione).
+- `CloudSync.swift`: se l'apertura con iCloud fallisce l'app si apre sullo stesso
+  database senza iCloud e le Impostazioni mostrano il motivo. Prima della prima
+  apertura con iCloud i file del database vengono copiati in `PreCloud-<data>`.
+- Su un dispositivo vuoto i dati iniziali si creano dopo il primo scambio con iCloud.
+  `CloudDedupe` unisce i giorni doppi e le impostazioni doppie creati da due
+  dispositivi insieme.

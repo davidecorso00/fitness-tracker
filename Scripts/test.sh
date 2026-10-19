@@ -69,6 +69,10 @@ run_suite "calibrazione-consumo" \
   "$ROOT/Shared/BurnCalibration.swift" \
   "$ROOT/Tests/BurnCalibration/main.swift"
 
+run_suite "unione-giorni-icloud" \
+  "$ROOT/Shared/CloudMerge.swift" \
+  "$ROOT/Tests/CloudMerge/main.swift"
+
 run_suite "logica-palestra" \
   "$ROOT/Shared/CalorieLogic.swift" \
   "$ROOT/FitnessApp/GymLogic.swift" \
