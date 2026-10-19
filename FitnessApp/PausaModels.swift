@@ -6,8 +6,9 @@ import Foundation
 // Sono i contenuti più personali dell'app, e per questo stanno a parte dal resto:
 //   · non finiscono nel backup JSON condivisibile (verificato da un test)
 //   · non vengono scritti su HealthKit
-//   · con la sincronizzazione attiva viaggiano solo nel TUO iCloud privato, legato
-//     al tuo Apple ID (Impostazioni › iCloud, dove si spegne)
+//   · le foto restano solo sul dispositivo (file locali, mai nel database);
+//     frasi, attività, piani e note con la sincronizzazione attiva viaggiano solo
+//     nel TUO iCloud privato, legato al tuo Apple ID (Impostazioni › iCloud)
 //   · si cancellano tutti insieme con un comando solo
 //
 // Quello che NON viene registrato è una scelta, non una dimenticanza: niente
@@ -52,6 +53,10 @@ import Foundation
 // MARK: - Foto
 
 /// Foto personali, non corporee: persone, luoghi, ricordi.
+///
+/// SOLO LEGACY: le foto ora sono file locali (PausaFotoStore) e non passano dal
+/// database, che si sincronizza con iCloud. Il modello resta nello schema per
+/// leggere le righe vecchie e spostarle (CloudSync.movePausaPhotosToFiles).
 @Model final class PausaFoto {
     @Attribute(.externalStorage) var dati: Data = Data()
     var aggiuntaIl: Date = Date()
@@ -156,7 +161,8 @@ enum PausaSeed {
     static func cancellaTutto(context: ModelContext) {
         try? context.delete(model: PausaFrase.self)
         try? context.delete(model: PausaAttivita.self)
-        try? context.delete(model: PausaFoto.self)
+        try? context.delete(model: PausaFoto.self)   // solo righe vecchie, se restano
+        PausaFotoStore.deleteAll()
         try? context.delete(model: PausaPiano.self)
         try? context.delete(model: PausaMarker.self)
         try? context.save()

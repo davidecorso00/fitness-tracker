@@ -179,3 +179,7 @@ I dati si sincronizzano con SwiftData + CloudKit nel database **privato** dell'u
 - Su un dispositivo vuoto i dati iniziali si creano dopo il primo scambio con iCloud.
   `CloudDedupe` unisce i giorni doppi e le impostazioni doppie creati da due
   dispositivi insieme.
+- Le foto di "Un attimo" non passano dal database: sono file in `Application Support/PausaFoto`
+  (`PausaFotoStore.swift`) e restano solo sul dispositivo. Le foto già nel database vengono
+  spostate nei file prima della prima apertura con iCloud (`CloudSync.movePausaPhotosToFiles`);
+  se lo spostamento non riesce, iCloud non parte.

@@ -67,6 +67,13 @@ final class CloudSync: ObservableObject {
 
         if Self.isEnabled {
             Self.copyStoreOnce(at: defaultURL)
+            // Le foto di "Un attimo" escono dal database PRIMA di aprirlo con iCloud:
+            // devono restare solo sul dispositivo. Se non si riesce, iCloud non parte.
+            guard Self.movePausaPhotosToFiles(schema: schema, url: defaultURL) else {
+                mode = .failed("Le foto di «Un attimo» non sono state spostate in file locali: "
+                               + "iCloud non attivato per tenerle solo sul dispositivo.")
+                return try ModelContainer(for: schema, configurations: local)
+            }
             do {
                 let cloud = ModelConfiguration(schema: schema, url: defaultURL,
                                                cloudKitDatabase: .private(Self.containerID))
@@ -80,6 +87,38 @@ final class CloudSync: ObservableObject {
             }
         }
         return try ModelContainer(for: schema, configurations: local)
+    }
+
+    private static let photosMovedKey = "pausaPhotosMovedToFiles"
+
+    /// Sposta le foto già salvate nel database in file locali (PausaFotoStore), poi
+    /// elimina le righe. Apre un contenitore temporaneo SENZA iCloud, quindi niente
+    /// parte verso il cloud. Ogni riga si elimina solo dopo aver scritto e
+    /// controllato il file. Una volta sola; false se qualcosa non è andato.
+    private static func movePausaPhotosToFiles(schema: Schema, url: URL) -> Bool {
+        guard !UserDefaults.standard.bool(forKey: photosMovedKey) else { return true }
+        do {
+            try autoreleasepool {
+                let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+                let container = try ModelContainer(for: schema, configurations: config)
+                let context = ModelContext(container)
+                let rows = try context.fetch(FetchDescriptor<PausaFoto>())
+                for row in rows {
+                    if !row.dati.isEmpty {
+                        guard PausaFotoStore.save(row.dati, date: row.aggiuntaIl) else {
+                            throw CocoaError(.fileWriteUnknown)
+                        }
+                    }
+                    context.delete(row)
+                }
+                try context.save()
+            }
+            UserDefaults.standard.set(true, forKey: photosMovedKey)
+            return true
+        } catch {
+            print("⚠️ Foto di «Un attimo» non spostate: \(error)")
+            return false
+        }
     }
 
     /// Copia i file del database (senza spostarli) prima della prima apertura con

@@ -205,7 +205,7 @@ private struct TraceActivity: View {
 
 private struct PhotoActivity: View {
     @Environment(\.modelContext) private var context
-    @Query private var foto: [PausaFoto]
+    @State private var foto: [PausaFotoStore.Item] = []
     @State private var indice = 0
 
     var body: some View {
@@ -228,7 +228,7 @@ private struct PhotoActivity: View {
                     .padding(.horizontal, 30)
                     .padding(.top, 10)
 
-                if let img = UIImage(data: foto[indice %% foto.count].dati) {
+                if let img = foto[indice %% foto.count].image {
                     Image(uiImage: img)
                         .resizable()
                         .scaledToFit()
@@ -248,6 +248,7 @@ private struct PhotoActivity: View {
                 Spacer()
             }
         }
+        .onAppear { foto = PausaFotoStore.list() }
     }
 }
 

@@ -11,7 +11,8 @@ struct PausaLibraryView: View {
 
     @Query(sort: \PausaFrase.ordine) private var frasi: [PausaFrase]
     @Query private var attivita: [PausaAttivita]
-    @Query private var foto: [PausaFoto]
+    /// Foto in file locali: non passano dal database, quindi non vanno su iCloud.
+    @State private var foto: [PausaFotoStore.Item] = []
     @Query private var piani: [PausaPiano]
 
     @State private var sezione = 0
@@ -131,13 +132,13 @@ struct PausaLibraryView: View {
 
     private var sezioneFoto: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Foto che ti fanno stare bene: persone, posti, ricordi. Restano nel tuo iCloud privato (o solo sul telefono, se spegni la sincronizzazione) e non escono da qui.")
+            Text("Foto che ti fanno stare bene: persone, posti, ricordi. Restano solo su questo dispositivo: non vanno su iCloud e non escono da qui.")
                 .font(.system(size: 13))
                 .foregroundStyle(Pausa.inkSoft)
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 ForEach(foto) { f in
-                    if let img = UIImage(data: f.dati) {
+                    if let img = f.image {
                         ZStack(alignment: .topTrailing) {
                             Image(uiImage: img)
                                 .resizable().scaledToFill()
@@ -145,7 +146,7 @@ struct PausaLibraryView: View {
                                 .clipped()
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             Button {
-                                context.delete(f); try? context.save()
+                                PausaFotoStore.delete(f); foto = PausaFotoStore.list()
                             } label: {
                                 Image(systemName: "xmark")
                                     .font(.system(size: 9, weight: .bold))
@@ -169,11 +170,12 @@ struct PausaLibraryView: View {
             .onChange(of: pickerFoto) { _, nuovi in
                 Task { await importa(nuovi) }
             }
+            .onAppear { foto = PausaFotoStore.list() }
         }
     }
 
-    /// Ridimensiona prima di salvare: una foto piena da 12 megapixel nel
-    /// database non serve a niente e lo appesantisce.
+    /// Ridimensiona prima di salvare: una foto piena da 12 megapixel
+    /// non serve a niente e occupa spazio.
     private func importa(_ items: [PhotosPickerItem]) async {
         for item in items {
             guard let data = try? await item.loadTransferable(type: Data.self),
@@ -184,9 +186,9 @@ struct PausaLibraryView: View {
             let render = UIGraphicsImageRenderer(size: nuovaSize)
             let ridotta = render.image { _ in img.draw(in: CGRect(origin: .zero, size: nuovaSize)) }
             guard let jpeg = ridotta.jpegData(compressionQuality: 0.72) else { continue }
-            context.insert(PausaFoto(dati: jpeg))
+            PausaFotoStore.save(jpeg)
         }
-        try? context.save()
+        foto = PausaFotoStore.list()
         pickerFoto = []
     }
 
