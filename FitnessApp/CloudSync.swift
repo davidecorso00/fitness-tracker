@@ -82,14 +82,38 @@ final class CloudSync: ObservableObject {
                 startObserving()
                 return container
             } catch {
-                mode = .failed(error.localizedDescription)
-                print("⚠️ iCloud non attivo: \(error)")
+                let detail = Self.describe(error)
+                mode = .failed(detail)
+                print("⚠️ iCloud non attivo:\n\(detail)")
             }
         }
         return try ModelContainer(for: schema, configurations: local)
     }
 
     private static let photosMovedKey = "pausaPhotosMovedToFiles"
+
+    /// L'errore con tutto quello che porta dentro (codice, motivo, errori annidati e
+    /// per modello), per capire perché iCloud non parte: "SwiftDataError 1" da solo
+    /// non dice niente.
+    static func describe(_ error: Error) -> String {
+        var lines: [String] = []
+        func walk(_ e: Error, depth: Int) {
+            guard depth < 4 else { return }
+            let pad = String(repeating: "  ", count: depth)
+            let ns = e as NSError
+            lines.append("\(pad)\(type(of: e)) [\(ns.domain) \(ns.code)]: \(ns.localizedDescription)")
+            if let reason = ns.localizedFailureReason { lines.append("\(pad)motivo: \(reason)") }
+            if depth == 0 { lines.append("\(pad)\(String(reflecting: e))") }
+            let info = "\(ns.userInfo)"
+            if info != "[:]" { lines.append("\(pad)info: \(info.prefix(1200))") }
+            if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error { walk(underlying, depth: depth + 1) }
+            if let detailed = ns.userInfo["NSDetailedErrors"] as? [Error] {
+                for d in detailed { walk(d, depth: depth + 1) }
+            }
+        }
+        walk(error, depth: 0)
+        return lines.joined(separator: "\n")
+    }
 
     /// Sposta le foto già salvate nel database in file locali (PausaFotoStore), poi
     /// elimina le righe. Apre un contenitore temporaneo SENZA iCloud, quindi niente

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Stato della sincronizzazione con iCloud (FitnessApp/CloudSync.swift) e interruttore.
 struct CloudSyncCard: View {
@@ -19,6 +20,15 @@ struct CloudSyncCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(statusColor)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if case .failed(let detail) = sync.mode {
+                    Text(detail)
+                        .font(.system(size: 10, design: .monospaced)).foregroundColor(.muted)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Copia i dettagli") { UIPasteboard.general.string = detail }
+                        .font(.system(size: 13, weight: .semibold)).foregroundColor(.acc2)
+                }
 
                 if sync.mode == .active {
                     detail("Ultima ricezione: \(format(sync.lastImport))")
@@ -42,7 +52,7 @@ struct CloudSyncCard: View {
         switch sync.mode {
         case .active:        return "Attiva"
         case .off:           return enabled ? "Parte alla prossima apertura dell'app" : "Spenta"
-        case .failed(let m): return "Non riuscita, i dati restano solo su questo dispositivo. \(m)"
+        case .failed:        return "Non riuscita: i dati restano solo su questo dispositivo."
         }
     }
 
