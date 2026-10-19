@@ -44,7 +44,7 @@ struct FitnessAppApp: App {
             PausaFrase.self, PausaAttivita.self, PausaFoto.self,
             PausaPiano.self, PausaMarker.self
         ])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, cloudKitDatabase: .none)
         do {
             // Con iCloud, sullo stesso file di prima; senza se non riesce (vedi CloudSync).
             return try CloudSync.shared.openContainer(schema: schema)

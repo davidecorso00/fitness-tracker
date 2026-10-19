@@ -38,7 +38,6 @@ final class CloudSync: ObservableObject {
     @Published private(set) var lastError: String?
 
     private var lastImportEnd: Date?
-    private var settled = false
     private var observer: NSObjectProtocol?
 
     static var isEnabled: Bool {
@@ -48,21 +47,28 @@ final class CloudSync: ObservableObject {
     /// L'account iCloud è connesso (indicazione, non garanzia che la sincronia funzioni).
     var accountAvailable: Bool { FileManager.default.ubiquityIdentityToken != nil }
 
-    /// I dati iniziali si possono creare: iCloud spento o non riuscito, oppure
-    /// l'attesa del primo scambio è finita.
-    var seedingAllowed: Bool { mode != .active || settled }
+    /// iCloud ha già consegnato almeno una volta i suoi dati.
+    var hasImported: Bool { lastImportEnd != nil }
+
+    /// I dati iniziali (alimenti, esercizi, obiettivi) si possono creare solo se
+    /// iCloud non c'è o ha già consegnato i suoi: crearli prima li duplicherebbe.
+    var seedingAllowed: Bool { mode != .active || hasImported || !accountAvailable }
 
     // MARK: - Apertura del database
 
     /// Apre il database con iCloud; se non riesce, senza. Lancia solo se anche
     /// l'apertura locale fallisce.
     func openContainer(schema: Schema) throws -> ModelContainer {
-        let local = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let defaultURL = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false).url
+        // Apertura SENZA iCloud, sullo stesso file. Va detto `.none` per esteso: il
+        // valore predefinito (`.automatic`) attiverebbe iCloud da solo, ora che
+        // l'app ha il container fra i permessi.
+        let local = ModelConfiguration(schema: schema, url: defaultURL, cloudKitDatabase: .none)
 
         if Self.isEnabled {
-            Self.copyStoreOnce(at: local.url)
+            Self.copyStoreOnce(at: defaultURL)
             do {
-                let cloud = ModelConfiguration(schema: schema, url: local.url,
+                let cloud = ModelConfiguration(schema: schema, url: defaultURL,
                                                cloudKitDatabase: .private(Self.containerID))
                 let container = try ModelContainer(for: schema, configurations: cloud)
                 mode = .active
@@ -96,9 +102,14 @@ final class CloudSync: ObservableObject {
             for file in related {
                 try fm.copyItem(at: file, to: backup.appendingPathComponent(file.lastPathComponent))
             }
+            // Foto, percorsi e battiti stanno in file a parte, accanto al database.
+            for file in files where file.lastPathComponent.hasPrefix(".default_SUPPORT") {
+                try? fm.copyItem(at: file, to: backup.appendingPathComponent(file.lastPathComponent))
+            }
             UserDefaults.standard.set(true, forKey: storeCopyDoneKey)
             print("📦 Copia del database prima di iCloud: \(backup.path)")
         } catch {
+            try? fm.removeItem(at: backup)
             print("⚠️ Copia prima di iCloud non riuscita: \(error)")
         }
     }
@@ -145,7 +156,6 @@ final class CloudSync: ObservableObject {
     /// iCloud consegni i suoi (primo scambio concluso e poi 4 secondi senza novità),
     /// al massimo 15 secondi: offline o senza account l'app parte comunque.
     func waitUntilSettled(storeHadData: Bool) async {
-        defer { settled = true }
         guard mode == .active, !storeHadData else { return }
         let started = Date()
         while Date().timeIntervalSince(started) < 15 {
@@ -213,9 +223,10 @@ enum CloudDedupe {
             return result
         }
         let fresh = signature(AppLimits())
+        // Prima di tutto vale la data di inizio più vecchia: è quella originale, mentre
+        // la copia creata da un dispositivo nuovo ha la data di quel giorno.
         return keepMostFilled(all, signature: signature, fresh: fresh,
-                              // A parità vale la data di inizio più vecchia: è quella originale.
-                              tieBreak: { String(format: "%012d", Int(4_102_444_800 - $0.startDate.timeIntervalSince1970)) },
+                              priority: { String(format: "%012lld", Int64(4_102_444_800 - $0.startDate.timeIntervalSince1970)) },
                               context: context)
     }
 
@@ -225,23 +236,24 @@ enum CloudDedupe {
             [p.heightCm.map { "\($0)" } ?? "-", p.birthDate.map { "\($0.timeIntervalSince1970)" } ?? "-", p.sex.rawValue]
         }
         return keepMostFilled(all, signature: signature, fresh: signature(UserProfile()),
-                              tieBreak: { _ in "" }, context: context)
+                              priority: { _ in "" }, context: context)
     }
 
-    /// Tiene l'elemento con più campi diversi dal valore di partenza (a parità,
-    /// quello con la firma maggiore) ed elimina quelli con una firma diversa.
-    /// Copie con la stessa firma della migliore restano, come le firme tutte uguali.
+    /// Tiene l'elemento con la priorità più alta, poi con più campi diversi dal
+    /// valore di partenza, poi con la firma maggiore; elimina quelli con una chiave
+    /// diversa. Copie con la stessa chiave della migliore restano, come le chiavi
+    /// tutte uguali.
     private static func keepMostFilled<T: PersistentModel>(
         _ items: [T], signature: (T) -> [String], fresh: [String],
-        tieBreak: (T) -> String, context: ModelContext
+        priority: (T) -> String, context: ModelContext
     ) -> Bool {
-        let rows = items.map { item -> (item: T, score: Int, key: String) in
+        let rows = items.map { item -> (item: T, key: String) in
             let sig = signature(item)
             let score = zip(sig, fresh).filter { $0 != $1 }.count
-            return (item, score, sig.joined(separator: "|") + "|" + tieBreak(item))
+            return (item, priority(item) + "|" + String(format: "%03d", score) + "|" + sig.joined(separator: "|"))
         }
         guard rows.contains(where: { $0.key != rows[0].key }),
-              let best = rows.max(by: { l, r in l.score != r.score ? l.score < r.score : l.key < r.key })
+              let best = rows.max(by: { $0.key < $1.key })
         else { return false }
         for row in rows where row.key != best.key { context.delete(row.item) }
         return true

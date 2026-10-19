@@ -131,7 +131,7 @@ struct PausaLibraryView: View {
 
     private var sezioneFoto: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Foto che ti fanno stare bene: persone, posti, ricordi. Restano sul telefono e non escono da qui.")
+            Text("Foto che ti fanno stare bene: persone, posti, ricordi. Restano nel tuo iCloud privato (o solo sul telefono, se spegni la sincronizzazione) e non escono da qui.")
                 .font(.system(size: 13))
                 .foregroundStyle(Pausa.inkSoft)
 
@@ -362,7 +362,7 @@ struct DopoEpisodioView: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             PausaEyebrow(text: "Se vuoi, scrivi cosa stava succedendo")
-                            Text("Resta sul telefono, non va da nessuna parte.")
+                            Text("Resta tuo: solo sul telefono o nel tuo iCloud privato.")
                                 .font(.system(size: 12))
                                 .foregroundStyle(Pausa.inkFaint)
                             TextField("", text: $nota, axis: .vertical)

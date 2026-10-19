@@ -6,7 +6,8 @@ import Foundation
 // Sono i contenuti più personali dell'app, e per questo stanno a parte dal resto:
 //   · non finiscono nel backup JSON condivisibile (verificato da un test)
 //   · non vengono scritti su HealthKit
-//   · non vengono sincronizzati da nessuna parte
+//   · con la sincronizzazione attiva viaggiano solo nel TUO iCloud privato, legato
+//     al tuo Apple ID (Impostazioni › iCloud, dove si spegne)
 //   · si cancellano tutti insieme con un comando solo
 //
 // Quello che NON viene registrato è una scelta, non una dimenticanza: niente
