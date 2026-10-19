@@ -237,7 +237,7 @@ struct AIFoodCatalog {
     }
 
     /// Oltre questo numero gli alimenti in più non vengono mandati (preferiti prima).
-    static let maxFoods = 1000
+    nonisolated static let maxFoods = 1000
 
     let foods: [Food]
     let dishes: [Dish]

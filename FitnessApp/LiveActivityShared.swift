@@ -8,8 +8,8 @@ import ActivityKit
 
 // MARK: - Corsa
 
-struct RunActivityAttributes: ActivityAttributes {
-    struct ContentState: Codable, Hashable {
+nonisolated struct RunActivityAttributes: ActivityAttributes {
+    nonisolated struct ContentState: Codable, Hashable {
         /// Ancora del cronometro: Date() - tempo attivo. Il sistema renderizza
         /// il timer da solo via Text(timerInterval:), senza update ogni secondo.
         var startedAt: Date
@@ -31,8 +31,8 @@ struct RunActivityAttributes: ActivityAttributes {
 
 // MARK: - Riposo palestra
 
-struct RestActivityAttributes: ActivityAttributes {
-    struct ContentState: Codable, Hashable {
+nonisolated struct RestActivityAttributes: ActivityAttributes {
+    nonisolated struct ContentState: Codable, Hashable {
         var endDate: Date
         var totalSeconds: Int
     }
