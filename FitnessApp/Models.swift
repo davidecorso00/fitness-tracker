@@ -104,7 +104,7 @@ import Foundation
     }
 
     /// Calorie bruciate da movimento (HealthKit activeEnergy) o stima da passi.
-    /// La quota BMR × 1.2 viene calcolata e aggiunta a livello superiore.
+    /// Il basale e la digestione (`restingKcal`) si aggiungono a livello superiore.
     var burnedKcal: Int {
         // L'energia attiva di Salute comprende già l'allenamento in palestra (il
         // Watch la misura tutto il giorno): i 150 kcal fissi valgono solo per le
@@ -395,14 +395,28 @@ func activityKcal(log: DayLog?, sports: [SportEntry]) -> Double {
     activityKcal(log: log, sport: sports.sportKcalTotals())
 }
 
-/// Metabolismo basale × 1.2 per la data indicata. 0 se mancano i dati del profilo.
-func restingKcal(profile: UserProfile?, weightKg: Double?, on date: Date) -> Double {
+/// Metabolismo basale (Mifflin-St Jeor) per la data indicata, senza fattori di
+/// attività. 0 se mancano i dati del profilo.
+func basalKcal(profile: UserProfile?, weightKg: Double?, on date: Date) -> Double {
     guard let profile,
           let heightCm = profile.heightCm,
           let birthDate = profile.birthDate,
           let w = weightKg, w > 0 else { return 0 }
     let age = Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
-    return calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex) * 1.2
+    return calculateBMR(weightKg: w, heightCm: heightCm, ageYears: age, sex: profile.sex)
+}
+
+/// Quota delle calorie mangiate che il corpo spende per digerirle (termogenesi
+/// indotta dalla dieta): in letteratura il 5-15%, in media circa il 10%.
+let thermicEffectOfFood = 0.10
+
+/// Consumo "a riposo" del giorno: basale + digestione di quello che si è mangiato.
+/// Prima era basale × 1,2: quel fattore comprende anche un po' di movimento, che
+/// l'energia attiva del Watch (sommata sopra) conta già. 0 se manca il basale.
+func restingKcal(profile: UserProfile?, weightKg: Double?, eaten: Double, on date: Date) -> Double {
+    let basal = basalKcal(profile: profile, weightKg: weightKg, on: date)
+    guard basal > 0 else { return 0 }
+    return basal + max(eaten, 0) * thermicEffectOfFood
 }
 
 /// Totale bruciato nel giorno: riposo + movimento.
@@ -410,8 +424,8 @@ func restingKcal(profile: UserProfile?, weightKg: Double?, on date: Date) -> Dou
 /// (profilo senza altezza o data di nascita, oppure nessun peso): contarlo come 0
 /// farebbe sembrare ogni giorno un surplus pari al basale, circa 2000 kcal.
 func totalDailyBurn(log: DayLog?, sport: SportKcal, profile: UserProfile?,
-                    weightKg: Double?, on date: Date) -> Double? {
-    let resting = restingKcal(profile: profile, weightKg: weightKg, on: date)
+                    weightKg: Double?, eaten: Double, on date: Date) -> Double? {
+    let resting = restingKcal(profile: profile, weightKg: weightKg, eaten: eaten, on: date)
     guard resting > 0 else { return nil }
     return resting + activityKcal(log: log, sport: sport)
 }

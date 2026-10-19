@@ -86,8 +86,8 @@ struct ResultsView: View {
 
             // Senza basale (profilo incompleto) il giorno non entra nel deficit:
             // contarlo come 0 lo farebbe sembrare un surplus di ~2000 kcal.
-            // "Bruciate" = basale × 1,2 + movimento, come nella schermata Oggi.
-            let resting = restingKcal(profile: profile, weightKg: lastWeight, on: date)
+            // "Bruciate" = basale + digestione + movimento, come nella schermata Oggi.
+            let resting = restingKcal(profile: profile, weightKg: lastWeight, eaten: eaten, on: date)
             if resting > 0 {
                 let totalBurn = resting + activity
                 s.totalKcalBurned += totalBurn; daysWithBurn += 1
@@ -107,6 +107,36 @@ struct ResultsView: View {
         }
         _ = lim
         return s
+    }
+
+    // MARK: - Calibrazione sulla bilancia
+
+    /// Ultimi 28 giorni conclusi: cibo registrato, consumo stimato e pesate.
+    private var calibration: BurnCalibrationResult {
+        let windowDays = BurnCalibrationRules.windowDays
+        let today = Calendar.current.startOfDay(for: Date())
+        let start = today.adding(days: -windowDays)
+        let kcalByDay  = allEntries.reduce(into: [String: Double]()) { $0[$1.dayKey, default: 0] += $1.kcalSnapshot }
+        let sportByDay = allSports.sportKcalByDay()
+        let logByDay   = allLogs.reduce(into: [String: DayLog]()) { $0[$1.dateKey] = $1 }
+        let profile = allProfiles.first
+
+        var lastWeight: Double? = allLogs.last { $0.dateKey < start.dateKey && $0.weight != nil }?.weight
+            ?? allLogs.first { $0.weight != nil }?.weight
+        var days: [CalibrationDay] = []
+        var weights: [CalibrationWeight] = []
+        for i in 0..<windowDays {
+            let date = start.adding(days: i)
+            let key = date.dateKey
+            if let w = logByDay[key]?.weight { weights.append(CalibrationWeight(index: i, kg: w)); lastWeight = w }
+            let eaten = kcalByDay[key] ?? 0
+            guard eaten > 0,
+                  let burn = totalDailyBurn(log: logByDay[key], sport: sportByDay[key] ?? SportKcal(),
+                                            profile: profile, weightKg: lastWeight, eaten: eaten, on: date)
+            else { continue }
+            days.append(CalibrationDay(index: i, eaten: eaten, estimatedBurn: burn))
+        }
+        return burnCalibration(days: days, weights: weights)
     }
 
     var body: some View {
@@ -155,6 +185,13 @@ struct ResultsView: View {
                         )
                         ResultCard(label: "Media calorie ingerite", value: "\(Int(s.avgKcalEaten)) kcal/g", color: .ringRed, icon: "fork.knife")
                         ResultCard(label: "Media calorie bruciate", value: "\(Int(s.avgKcalBurned)) kcal/g", color: .gymOrange, icon: "figure.run")
+                    }
+
+                    // In modalità morbida i numeri del bilancio non si mostrano.
+                    if !SoftMode.attiva {
+                        ResultSection(title: "Consumo reale (dalla bilancia)") {
+                            BurnCalibrationCard(result: calibration)
+                        }
                     }
 
                     ResultSection(title: "Attività") {

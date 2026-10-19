@@ -246,7 +246,9 @@ struct SettingsView: View {
               let peso = todayLog?.weight ?? lastKnownWeight, peso > 0 else { return nil }
         let giorni = Calendar.current.dateComponents(
             [.day], from: Calendar.current.startOfDay(for: Date()), to: data).day ?? 0
-        let basale = restingKcal(profile: profile, weightKg: peso, on: Date()) / 1.2
+        // Stima di mantenimento per pianificare l'obiettivo: basale × 1,2, la
+        // convenzione per chi non fa sport. Non è il consumo mostrato in Oggi.
+        let basale = basalKcal(profile: profile, weightKg: peso, on: Date())
         let manutenzione = basale * 1.2
         return goalPace(pesoAttuale: peso, pesoObiettivo: lim.targetWeight,
                         giorni: giorni, manutenzione: manutenzione,

@@ -57,6 +57,7 @@ struct TodayView: View {
     private var bmrToday: Double {
         restingKcal(profile: allProfiles.first,
                     weightKg: dayLog?.weight ?? lastKnownWeight,
+                    eaten: totals.kcal,
                     on: appState.currentDate)
     }
 

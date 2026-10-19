@@ -217,6 +217,7 @@ struct ChartsBodyView: View {
                        sport: sportByDay[date.dateKey] ?? SportKcal(),
                        profile: allProfiles.first,
                        weightKg: weight(for: date),
+                       eaten: kcalByDay[date.dateKey] ?? 0,
                        on: date)
     }
 

@@ -94,7 +94,7 @@ struct WeightGoalSection: View {
             guard let eaten = kcal[key], eaten > 0,
                   let burn = totalDailyBurn(log: logs[key], sport: sports[key] ?? SportKcal(),
                                             profile: profile, weightKg: weight(onOrBefore: key),
-                                            on: day)
+                                            eaten: eaten, on: day)
             else { return nil }
             return burn - eaten
         }

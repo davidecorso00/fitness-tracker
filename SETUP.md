@@ -134,9 +134,14 @@ xcodebuild -scheme FitnessApp -destination 'generic/platform=iOS Simulator' buil
 Un'unica implementazione in `Models.swift`:
 
 ```
-totale = BMR (Mifflin-St Jeor) × 1.2 + movimento
+totale = BMR (Mifflin-St Jeor) + digestione (10% delle kcal mangiate) + movimento
 movimento = energia attiva di Health (o passi × 0.04) + bonus palestra 150 + sport
 ```
+
+Prima il riposo era BMR × 1.2, ma quel fattore comprende già un po' di movimento
+che l'energia attiva di Health conta di nuovo. In Risultati, "Consumo reale",
+il consumo si ricava anche da cibo registrato e peso degli ultimi 28 giorni
+(`Shared/BurnCalibration.swift`): è solo un confronto, non cambia i totali.
 
 Corsa e salto con la corda salvano anche una `SportEntry` con `autoTracked = true`.
 Quando Apple Health fornisce l'energia attiva, quell'attività è già conteggiata lì e
